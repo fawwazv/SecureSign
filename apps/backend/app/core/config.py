@@ -67,6 +67,20 @@ class Settings:
 
     rate_limit_per_minute: int = field(default_factory=lambda: _int("RATE_LIMIT_PER_MINUTE", 60))
 
+    smtp_host: str = field(default_factory=lambda: os.getenv("SMTP_HOST", "").strip())
+    smtp_port: int = field(default_factory=lambda: _int("SMTP_PORT", 587))
+    smtp_user: str = field(default_factory=lambda: os.getenv("SMTP_USER", "").strip())
+    smtp_pass: str = field(default_factory=lambda: os.getenv("SMTP_PASS", ""))
+    smtp_from: str = field(default_factory=lambda: os.getenv("SMTP_FROM", "").strip())
+
+    @property
+    def smtp_configured(self) -> bool:
+        return bool(self.smtp_host and self.smtp_user and self.smtp_pass)
+
+    @property
+    def smtp_sender(self) -> str:
+        return self.smtp_from or self.smtp_user
+
     @property
     def is_dev(self) -> bool:
         return self.env.lower() == "development"
