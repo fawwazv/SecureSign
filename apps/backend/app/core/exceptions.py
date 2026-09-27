@@ -53,7 +53,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def _unhandled(_: Request, exc: Exception) -> JSONResponse:  # noqa: BLE001
+    async def _unhandled(_: Request, exc: Exception) -> JSONResponse:
         # Jangan bocorkan detail internal ke klien; log ditangani middleware/logging.
         _ = exc
         return JSONResponse(

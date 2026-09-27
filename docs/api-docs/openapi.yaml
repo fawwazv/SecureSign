@@ -40,6 +40,8 @@ paths:
             schema:
               $ref: '#/components/schemas/RegisterRequest'
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '201':
           description: 'Terdaftar, email verifikasi terkirim (mode dev: link ada di log server)'
           content:
@@ -63,6 +65,8 @@ paths:
             schema:
               $ref: '#/components/schemas/VerifyEmailRequest'
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '200':
           description: Email terverifikasi, akun aktif
           content:
@@ -84,6 +88,8 @@ paths:
             schema:
               $ref: '#/components/schemas/ResendVerificationRequest'
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '200':
           description: Email terkirim (selalu 200 agar tidak bocor status akun)
           content:
@@ -103,6 +109,8 @@ paths:
             schema:
               $ref: '#/components/schemas/LoginRequest'
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '200':
           description: Login sukses
           content:
@@ -130,6 +138,8 @@ paths:
             schema:
               $ref: '#/components/schemas/RefreshRequest'
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '200':
           description: Token baru
           content:
@@ -150,6 +160,8 @@ paths:
             schema:
               $ref: '#/components/schemas/LogoutRequest'
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '200':
           description: Logout sukses
           content:
@@ -184,6 +196,8 @@ paths:
             schema:
               $ref: '#/components/schemas/GenerateKeyRequest'
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '201':
           description: Key pair terbuat (private key TIDAK pernah dikembalikan plaintext)
           content:
@@ -250,6 +264,8 @@ paths:
             schema:
               $ref: '#/components/schemas/UploadDocumentRequest'
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '201':
           description: Dokumen terupload, hash SHA-256 dihitung
           content:
@@ -317,6 +333,8 @@ paths:
             schema:
               $ref: '#/components/schemas/RequestSignRequest'
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '201':
           description: SignRequest terbuat + notifikasi terkirim ke Signer
           content:
@@ -364,6 +382,8 @@ paths:
             schema:
               $ref: '#/components/schemas/ApproveRequest'
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '201':
           description: Signature terbuat
           content:
@@ -392,6 +412,8 @@ paths:
             schema:
               $ref: '#/components/schemas/BatchApproveRequest'
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '200':
           description: Hasil per item (sukses/gagal 개별, tidak setengah jalan)
           content:
@@ -418,6 +440,8 @@ paths:
             schema:
               $ref: '#/components/schemas/RejectRequest'
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '200':
           description: Ditolak
           content:
@@ -469,6 +493,8 @@ paths:
                   type: string
                   format: binary
       responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
         '200':
           description: Hasil verifikasi VALID / TIDAK VALID
           content:
@@ -558,6 +584,12 @@ components:
             $ref: '#/components/schemas/ErrorBody'
     Forbidden:
       description: Role tidak diizinkan
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    ValidationError:
+      description: Validasi request gagal (tipe/format field salah)
       content:
         application/json:
           schema:

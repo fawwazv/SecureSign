@@ -48,9 +48,14 @@ def _make_user(email: str, role: str) -> None:
         await db.connect()
         try:
             await db.user.create(
-                data={"email": email, "passwordHash": hash_password("Rahasia123"),
-                      "fullName": "Verify Tester", "organization": "PT Tes",
-                      "role": role, "emailVerified": True}
+                data={
+                    "email": email,
+                    "passwordHash": hash_password("Rahasia123"),
+                    "fullName": "Verify Tester",
+                    "organization": "PT Tes",
+                    "role": role,
+                    "emailVerified": True,
+                }
             )
         finally:
             await db.disconnect()
@@ -70,7 +75,7 @@ def _storage_cleanup(uid: str) -> None:
                 if paths:
                     sb.storage.from_("documents").remove(paths)
                 break
-            except Exception:
+            except Exception:  # noqa: BLE001, S110 — cleanup best-effort
                 pass
 
 
@@ -117,16 +122,25 @@ def env(client: TestClient) -> dict:
     _make_user(org, "ORG_ADMIN")
     _make_user(signer, "SIGNER")
     _make_user(admin, "SUPER_ADMIN")
-    data = {"org": org, "signer": signer, "admin": admin,
-            "t_org": _login(client, org), "t_signer": _login(client, signer),
-            "t_admin": _login(client, admin)}
-    key = client.post("/api/v1/keys/generate", json={"algorithm": "ED25519"},
-                      headers={"Authorization": f"Bearer {data['t_signer']}"})
+    data = {
+        "org": org,
+        "signer": signer,
+        "admin": admin,
+        "t_org": _login(client, org),
+        "t_signer": _login(client, signer),
+        "t_admin": _login(client, admin),
+    }
+    key = client.post(
+        "/api/v1/keys/generate",
+        json={"algorithm": "ED25519"},
+        headers={"Authorization": f"Bearer {data['t_signer']}"},
+    )
     assert key.status_code == 201, key.text
     data["key_id"] = key.json()["id"]
     yield data
     for e in (org, signer, admin):
         _cleanup(e)
+
     # Hapus audit VERIFY tanpa aktor milik run ini.
     async def _wipe() -> None:
         db = Prisma()
@@ -161,13 +175,17 @@ def _signed(client: TestClient, env: dict, title: str) -> tuple[str, bytes, byte
         finally:
             await db.disconnect()
 
-    req = client.post(f"/api/v1/documents/{doc_id}/request-sign",
-                      json={"signerId": _db_run(_sid())},
-                      headers={"Authorization": f"Bearer {env['t_org']}"})
+    req = client.post(
+        f"/api/v1/documents/{doc_id}/request-sign",
+        json={"signerId": _db_run(_sid())},
+        headers={"Authorization": f"Bearer {env['t_org']}"},
+    )
     assert req.status_code == 201, req.text
-    ap = client.post(f"/api/v1/sign-requests/{req.json()['id']}/approve",
-                     json={"keyPairId": env["key_id"]},
-                     headers={"Authorization": f"Bearer {env['t_signer']}"})
+    ap = client.post(
+        f"/api/v1/sign-requests/{req.json()['id']}/approve",
+        json={"keyPairId": env["key_id"]},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
     assert ap.status_code == 201, ap.text
     body = ap.json()
     from app.services.storage_service import download_file
@@ -194,8 +212,10 @@ def test_verify_fake_qr_invalid(client: TestClient, env: dict) -> None:
 def test_verify_upload_original_dan_signed(client: TestClient, env: dict) -> None:
     _, original, signed = _signed(client, env, "Upload1")
     for content in (original, signed):
-        res = client.post("/api/v1/verify/upload",
-                          files={"file": ("dok.pdf", io.BytesIO(content), "application/pdf")})
+        res = client.post(
+            "/api/v1/verify/upload",
+            files={"file": ("dok.pdf", io.BytesIO(content), "application/pdf")},
+        )
         assert res.status_code == 200, res.text
         assert res.json()["status"] == "VALID"
 
@@ -204,16 +224,19 @@ def test_verify_tamper_satu_byte_invalid(client: TestClient, env: dict) -> None:
     _, _, signed = _signed(client, env, "Tamper1")
     tampered = bytearray(signed)
     tampered[len(tampered) // 2] ^= 0x01
-    res = client.post("/api/v1/verify/upload",
-                      files={"file": ("dok.pdf", io.BytesIO(bytes(tampered)), "application/pdf")})
+    res = client.post(
+        "/api/v1/verify/upload",
+        files={"file": ("dok.pdf", io.BytesIO(bytes(tampered)), "application/pdf")},
+    )
     assert res.status_code == 200
     assert res.json()["status"] == "INVALID"
 
 
 def test_verify_upload_acak_invalid(client: TestClient, env: dict) -> None:
     other = _real_pdf_bytes("asing")
-    res = client.post("/api/v1/verify/upload",
-                      files={"file": ("dok.pdf", io.BytesIO(other), "application/pdf")})
+    res = client.post(
+        "/api/v1/verify/upload", files={"file": ("dok.pdf", io.BytesIO(other), "application/pdf")}
+    )
     assert res.status_code == 200
     assert res.json()["status"] == "INVALID"
 
@@ -239,12 +262,14 @@ def test_verify_signature_db_diubah_invalid(client: TestClient, env: dict) -> No
         res = client.get(f"/api/v1/verify/{sig_id}")
         assert res.json()["status"] == "INVALID"
     finally:
+
         async def _restore() -> None:
             db = Prisma()
             await db.connect()
             try:
-                await db.signature.update(where={"id": sig_id},
-                                          data={"signatureValue": original_value})
+                await db.signature.update(
+                    where={"id": sig_id}, data={"signatureValue": original_value}
+                )
             finally:
                 await db.disconnect()
 
@@ -252,8 +277,11 @@ def test_verify_signature_db_diubah_invalid(client: TestClient, env: dict) -> No
 
 
 def test_verify_key_revoked_invalid(client: TestClient, env: dict) -> None:
-    key = client.post("/api/v1/keys/generate", json={"algorithm": "ED25519"},
-                      headers={"Authorization": f"Bearer {env['t_signer']}"}).json()
+    key = client.post(
+        "/api/v1/keys/generate",
+        json={"algorithm": "ED25519"},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    ).json()
     pdf = _real_pdf_bytes("Revoke1")
     up = client.post(
         "/api/v1/documents",
@@ -273,15 +301,20 @@ def test_verify_key_revoked_invalid(client: TestClient, env: dict) -> None:
         finally:
             await db.disconnect()
 
-    req = client.post(f"/api/v1/documents/{doc_id}/request-sign",
-                      json={"signerId": _db_run(_sid())},
-                      headers={"Authorization": f"Bearer {env['t_org']}"})
-    ap = client.post(f"/api/v1/sign-requests/{req.json()['id']}/approve",
-                     json={"keyPairId": key["id"]},
-                     headers={"Authorization": f"Bearer {env['t_signer']}"})
+    req = client.post(
+        f"/api/v1/documents/{doc_id}/request-sign",
+        json={"signerId": _db_run(_sid())},
+        headers={"Authorization": f"Bearer {env['t_org']}"},
+    )
+    ap = client.post(
+        f"/api/v1/sign-requests/{req.json()['id']}/approve",
+        json={"keyPairId": key["id"]},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
     sig_id = ap.json()["id"]
-    client.post(f"/api/v1/keys/{key['id']}/revoke",
-                headers={"Authorization": f"Bearer {env['t_admin']}"})
+    client.post(
+        f"/api/v1/keys/{key['id']}/revoke", headers={"Authorization": f"Bearer {env['t_admin']}"}
+    )
     res = client.get(f"/api/v1/verify/{sig_id}")
     assert res.json()["status"] == "INVALID"
     assert "revoke" in res.json()["reason"].lower()
@@ -294,8 +327,12 @@ def test_audit_logs_rbac(client: TestClient, env: dict) -> None:
         body = res.json()
         assert {"data", "page", "limit", "total"} <= set(body)
         assert body["total"] >= 1
-    assert client.get("/api/v1/audit-logs",
-                      headers={"Authorization": f"Bearer {env['t_signer']}"}).status_code == 403
+    assert (
+        client.get(
+            "/api/v1/audit-logs", headers={"Authorization": f"Bearer {env['t_signer']}"}
+        ).status_code
+        == 403
+    )
     assert client.get("/api/v1/audit-logs").status_code == 401
 
 
@@ -316,9 +353,13 @@ def test_perf_api_verify(client: TestClient, env: dict) -> None:
     sig_id, original, _ = _signed(client, env, "Perf1")
     for label, fn in (
         ("GET sig", lambda: client.get(f"/api/v1/verify/{sig_id}")),
-        ("POST upload", lambda: client.post(
-            "/api/v1/verify/upload",
-            files={"file": ("dok.pdf", io.BytesIO(original), "application/pdf")})),
+        (
+            "POST upload",
+            lambda: client.post(
+                "/api/v1/verify/upload",
+                files={"file": ("dok.pdf", io.BytesIO(original), "application/pdf")},
+            ),
+        ),
     ):
         start = time.monotonic()
         for _ in range(3):

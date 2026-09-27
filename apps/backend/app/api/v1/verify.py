@@ -44,9 +44,10 @@ async def _crypto_valid(db: Prisma, sig: Any) -> tuple[bool, str]:
     try:
         metadata = json.loads(sig.canonicalMetadata)
         message = signed_message(sig.signedHash, metadata)
-        ok = verify_with(str(sig.algorithm), key.publicKey, message,
-                         base64.b64decode(sig.signatureValue))
-    except Exception:
+        ok = verify_with(
+            str(sig.algorithm), key.publicKey, message, base64.b64decode(sig.signatureValue)
+        )
+    except Exception:  # noqa: BLE001 — data korup = INVALID, bukan 500
         return False, "Signature tidak valid."
     return (True, "") if ok else (False, "Hash / signature tidak cocok (dokumen mungkin diubah).")
 
@@ -88,8 +89,13 @@ async def verify_by_sig_id(sig_id: str, db: Annotated[Prisma, Depends(get_db)]):
     if sig is None:
         return _invalid("Token verifikasi tidak ditemukan.")
     ok, reason = await _crypto_valid(db, sig)
-    await log_action(db, "VERIFY", entity="signature", entity_id=sig_id,
-                     details={"method": "sig_id", "result": "VALID" if ok else "INVALID"})
+    await log_action(
+        db,
+        "VERIFY",
+        entity="signature",
+        entity_id=sig_id,
+        details={"method": "sig_id", "result": "VALID" if ok else "INVALID"},
+    )
     if not ok:
         return _invalid(reason)
     return await _valid_result(db, sig)
@@ -110,8 +116,13 @@ async def verify_upload(
     for sig in candidates:
         ok, _ = await _crypto_valid(db, sig)
         if ok:
-            await log_action(db, "VERIFY", entity="signature", entity_id=sig.id,
-                             details={"method": "upload-original", "result": "VALID"})
+            await log_action(
+                db,
+                "VERIFY",
+                entity="signature",
+                entity_id=sig.id,
+                details={"method": "upload-original", "result": "VALID"},
+            )
             return await _valid_result(db, sig)
 
     # 2. File = PDF bertanda (hash berbeda) -> cocokkan byte file signed.
@@ -121,13 +132,18 @@ async def verify_upload(
             continue
         try:
             signed_bytes = download_file(sig.signedPdfPath)
-        except Exception:
+        except Exception:  # noqa: BLE001, S112 — file hilang = lewati kandidat ini
             continue
         if sha256_hex(signed_bytes) == digest:
             ok, _ = await _crypto_valid(db, sig)
             if ok:
-                await log_action(db, "VERIFY", entity="signature", entity_id=sig.id,
-                                 details={"method": "upload-signed", "result": "VALID"})
+                await log_action(
+                    db,
+                    "VERIFY",
+                    entity="signature",
+                    entity_id=sig.id,
+                    details={"method": "upload-signed", "result": "VALID"},
+                )
                 return await _valid_result(db, sig)
 
     await log_action(db, "VERIFY", details={"method": "upload", "result": "INVALID"})

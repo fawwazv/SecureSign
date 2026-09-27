@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 from prisma import Prisma
 
-from app.api.deps import get_current_user, require_role
+from app.api.deps import require_role
 from app.core.exceptions import AppError
 from app.crypto.key_manager import generate_keypair
 from app.models.prisma_client import get_db
@@ -46,15 +46,11 @@ async def generate_key(
 
 @router.get("/keys", response_model=dict)
 async def list_keys(user: SignerOnly, db: Annotated[Prisma, Depends(get_db)]):
-    keys = await db.keypair.find_many(
-        where={"ownerId": user["id"]}, order={"createdAt": "desc"}
-    )
+    keys = await db.keypair.find_many(where={"ownerId": user["id"]}, order={"createdAt": "desc"})
     return {"data": [to_key_response(k) for k in keys]}
 
 
-@router.post(
-    "/keys/{id}/revoke", response_model=KeyPairResponse, response_model_by_alias=True
-)
+@router.post("/keys/{id}/revoke", response_model=KeyPairResponse, response_model_by_alias=True)
 async def revoke_key(
     id: str,
     _admin: AdminOnly,
@@ -67,6 +63,6 @@ async def revoke_key(
         return to_key_response(key)
     updated = await db.keypair.update(
         where={"id": id},
-        data={"revoked": True, "revokedAt": datetime.now(timezone.utc)},
+        data={"revoked": True, "revokedAt": datetime.now(UTC)},
     )
     return to_key_response(updated)

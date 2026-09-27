@@ -43,20 +43,28 @@ def _int(name: str, default: int) -> int:
 @dataclass
 class Settings:
     env: str = field(default_factory=lambda: os.getenv("ENV", "development"))
-    api_base_url: str = field(default_factory=lambda: os.getenv("API_BASE_URL", "http://localhost:8000"))
-    frontend_url: str = field(default_factory=lambda: os.getenv("FRONTEND_URL", "http://localhost:5173"))
+    api_base_url: str = field(
+        default_factory=lambda: os.getenv("API_BASE_URL", "http://localhost:8000")
+    )
+    frontend_url: str = field(
+        default_factory=lambda: os.getenv("FRONTEND_URL", "http://localhost:5173")
+    )
 
     database_url: str = field(default_factory=lambda: _req("DATABASE_URL"))
     direct_url: str = field(default_factory=lambda: _req("DIRECT_URL"))
 
     supabase_url: str = field(default_factory=lambda: _req("SUPABASE_URL"))
     supabase_anon_key: str = field(default_factory=lambda: _req("SUPABASE_ANON_KEY"))
-    supabase_service_role_key: str = field(default_factory=lambda: _req("SUPABASE_SERVICE_ROLE_KEY"))
+    supabase_service_role_key: str = field(
+        default_factory=lambda: _req("SUPABASE_SERVICE_ROLE_KEY")
+    )
     supabase_jwks_url: str = field(default_factory=lambda: os.getenv("SUPABASE_JWKS_URL", ""))
 
     jwt_secret: str = field(default_factory=lambda: _req("JWT_SECRET"))
     jwt_refresh_secret: str = field(default_factory=lambda: _req("JWT_REFRESH_SECRET"))
-    jwt_access_expire_minutes: int = field(default_factory=lambda: _int("JWT_ACCESS_EXPIRE_MINUTES", 15))
+    jwt_access_expire_minutes: int = field(
+        default_factory=lambda: _int("JWT_ACCESS_EXPIRE_MINUTES", 15)
+    )
     jwt_refresh_expire_days: int = field(default_factory=lambda: _int("JWT_REFRESH_EXPIRE_DAYS", 7))
 
     kek_secret: str = field(default_factory=lambda: _req("KEK_SECRET"))

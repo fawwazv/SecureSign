@@ -56,9 +56,14 @@ def _make_user(email: str, role: str) -> None:
         await db.connect()
         try:
             await db.user.create(
-                data={"email": email, "passwordHash": hash_password("Rahasia123"),
-                      "fullName": "Sign Tester", "organization": "PT Tes",
-                      "role": role, "emailVerified": True}
+                data={
+                    "email": email,
+                    "passwordHash": hash_password("Rahasia123"),
+                    "fullName": "Sign Tester",
+                    "organization": "PT Tes",
+                    "role": role,
+                    "emailVerified": True,
+                }
             )
         finally:
             await db.disconnect()
@@ -100,7 +105,7 @@ def _cleanup(email: str) -> None:
                 paths = [f"{folder}/{f['name']}" for f in entries if f.get("id")]
                 if paths:
                     sb.storage.from_("documents").remove(paths)
-            except Exception:
+            except Exception:  # noqa: BLE001, S110 — cleanup best-effort
                 pass
 
 
@@ -119,11 +124,19 @@ def env(client: TestClient) -> dict:
     _make_user(org, "ORG_ADMIN")
     _make_user(signer, "SIGNER")
     _make_user(admin, "SUPER_ADMIN")
-    data = {"org": org, "signer": signer, "admin": admin,
-            "t_org": _login(client, org), "t_signer": _login(client, signer),
-            "t_admin": _login(client, admin)}
-    key = client.post("/api/v1/keys/generate", json={"algorithm": "ED25519"},
-                      headers={"Authorization": f"Bearer {data['t_signer']}"})
+    data = {
+        "org": org,
+        "signer": signer,
+        "admin": admin,
+        "t_org": _login(client, org),
+        "t_signer": _login(client, signer),
+        "t_admin": _login(client, admin),
+    }
+    key = client.post(
+        "/api/v1/keys/generate",
+        json={"algorithm": "ED25519"},
+        headers={"Authorization": f"Bearer {data['t_signer']}"},
+    )
     assert key.status_code == 201, key.text
     data["key_id"] = key.json()["id"]
     yield data
@@ -154,9 +167,11 @@ def _request_sign(client: TestClient, env: dict, doc_id: str) -> str:
             await db.disconnect()
 
     sid = _db_run(_sid())
-    res = client.post(f"/api/v1/documents/{doc_id}/request-sign",
-                      json={"signerId": sid},
-                      headers={"Authorization": f"Bearer {env['t_org']}"})
+    res = client.post(
+        f"/api/v1/documents/{doc_id}/request-sign",
+        json={"signerId": sid},
+        headers={"Authorization": f"Bearer {env['t_org']}"},
+    )
     assert res.status_code == 201, res.text
     return res.json()["id"]
 
@@ -165,9 +180,11 @@ def test_single_approve_end_to_end(client: TestClient, env: dict) -> None:
     doc_id = _upload(client, env["t_org"], "Approve1")
     sr_id = _request_sign(client, env, doc_id)
     start = time.monotonic()
-    res = client.post(f"/api/v1/sign-requests/{sr_id}/approve",
-                      json={"keyPairId": env["key_id"]},
-                      headers={"Authorization": f"Bearer {env['t_signer']}"})
+    res = client.post(
+        f"/api/v1/sign-requests/{sr_id}/approve",
+        json={"keyPairId": env["key_id"]},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
     elapsed = time.monotonic() - start
     assert res.status_code == 201, res.text
     sig = res.json()
@@ -199,9 +216,11 @@ def test_single_approve_end_to_end(client: TestClient, env: dict) -> None:
     assert signed_pdf.startswith(b"%PDF") and len(signed_pdf) > len(REAL_PDF)
 
     # Approve ulang -> 409.
-    again = client.post(f"/api/v1/sign-requests/{sr_id}/approve",
-                        json={"keyPairId": env["key_id"]},
-                        headers={"Authorization": f"Bearer {env['t_signer']}"})
+    again = client.post(
+        f"/api/v1/sign-requests/{sr_id}/approve",
+        json={"keyPairId": env["key_id"]},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
     assert again.status_code == 409
 
 
@@ -209,9 +228,13 @@ def test_batch_approve_campuran(client: TestClient, env: dict) -> None:
     ids = [_request_sign(client, env, _upload(client, env["t_org"], f"Batch{i}")) for i in range(2)]
     res = client.post(
         "/api/v1/sign-requests/batch-approve",
-        json={"items": [{"signRequestId": ids[0], "keyPairId": env["key_id"]},
-                        {"signRequestId": ids[1], "keyPairId": env["key_id"]},
-                        {"signRequestId": "tidak-ada", "keyPairId": env["key_id"]}]},
+        json={
+            "items": [
+                {"signRequestId": ids[0], "keyPairId": env["key_id"]},
+                {"signRequestId": ids[1], "keyPairId": env["key_id"]},
+                {"signRequestId": "tidak-ada", "keyPairId": env["key_id"]},
+            ]
+        },
         headers={"Authorization": f"Bearer {env['t_signer']}"},
     )
     assert res.status_code == 200, res.text
@@ -221,32 +244,46 @@ def test_batch_approve_campuran(client: TestClient, env: dict) -> None:
     assert results["tidak-ada"]["success"] is False
     assert results["tidak-ada"]["error"]["error"]["code"] == "NOT_FOUND"
 
-    empty = client.post("/api/v1/sign-requests/batch-approve", json={"items": []},
-                        headers={"Authorization": f"Bearer {env['t_signer']}"})
+    empty = client.post(
+        "/api/v1/sign-requests/batch-approve",
+        json={"items": []},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
     assert empty.status_code == 400
 
 
 def test_reject_dan_alasan_wajib(client: TestClient, env: dict) -> None:
     sr_id = _request_sign(client, env, _upload(client, env["t_org"], "Tolak1"))
-    no_reason = client.post(f"/api/v1/sign-requests/{sr_id}/reject", json={},
-                            headers={"Authorization": f"Bearer {env['t_signer']}"})
+    no_reason = client.post(
+        f"/api/v1/sign-requests/{sr_id}/reject",
+        json={},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
     assert no_reason.status_code == 400
-    rej = client.post(f"/api/v1/sign-requests/{sr_id}/reject",
-                      json={"rejectReason": "Data salah"},
-                      headers={"Authorization": f"Bearer {env['t_signer']}"})
+    rej = client.post(
+        f"/api/v1/sign-requests/{sr_id}/reject",
+        json={"rejectReason": "Data salah"},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
     assert rej.status_code == 200, rej.text
     body = rej.json()
     assert body["status"] == "REJECTED" and body["rejectReason"] == "Data salah"
 
 
 def test_approve_key_revoked_ditolak(client: TestClient, env: dict) -> None:
-    key = client.post("/api/v1/keys/generate", json={"algorithm": "ED25519"},
-                      headers={"Authorization": f"Bearer {env['t_signer']}"}).json()
-    client.post(f"/api/v1/keys/{key['id']}/revoke",
-                headers={"Authorization": f"Bearer {env['t_admin']}"})
+    key = client.post(
+        "/api/v1/keys/generate",
+        json={"algorithm": "ED25519"},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    ).json()
+    client.post(
+        f"/api/v1/keys/{key['id']}/revoke", headers={"Authorization": f"Bearer {env['t_admin']}"}
+    )
     sr_id = _request_sign(client, env, _upload(client, env["t_org"], "Revoke1"))
-    res = client.post(f"/api/v1/sign-requests/{sr_id}/approve",
-                      json={"keyPairId": key["id"]},
-                      headers={"Authorization": f"Bearer {env['t_signer']}"})
+    res = client.post(
+        f"/api/v1/sign-requests/{sr_id}/approve",
+        json={"keyPairId": key["id"]},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
     assert res.status_code == 400
     assert res.json()["error"]["code"] == "KEY_REVOKED"

@@ -1,0 +1,68 @@
+name: backend
+
+on:
+  push:
+    branches: [develop, main]
+    paths: ["apps/backend/**", "packages/database/**", "docs/api-docs/**"]
+  pull_request:
+    paths: ["apps/backend/**", "packages/database/**", "docs/api-docs/**"]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff black
+      - run: ruff check apps/backend/app/
+        working-directory: .
+      - run: black --check apps/backend/app/
+        working-directory: .
+
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install openapi-spec-validator pyyaml
+      - run: python -c "from openapi_spec_validator import validate_spec; from openapi_spec_validator.readers import read_from_filename; s,_=read_from_filename('docs/api-docs/openapi.yaml'); validate_spec(s); print('openapi valid')"
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [lint, contract]
+    strategy:
+      # Per-file agar tidak timeout (suite penuh >10 menit via pooler jauh).
+      matrix:
+        target:
+          - app/tests/test_foundation.py
+          - app/tests/test_email.py
+          - app/tests/test_auth.py
+          - app/tests/test_crypto.py
+          - app/tests/test_documents.py
+          - app/tests/test_signing.py
+          - app/tests/test_verify.py
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_JWKS_URL: ${{ secrets.SUPABASE_JWKS_URL }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+      KEK_SECRET: ${{ secrets.KEK_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r apps/backend/requirements.txt
+      - run: python -m prisma generate
+        working-directory: packages/database
+      - run: python -m pytest ${{ matrix.target }} -q
+        working-directory: apps/backend
+        timeout-minutes: 15

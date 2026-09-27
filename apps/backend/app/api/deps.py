@@ -25,7 +25,9 @@ async def get_current_user(
 
 
 def require_role(*allowed: str):  # type: ignore[no-untyped-def]
-    async def _checker(user: Annotated[dict[str, Any], Depends(get_current_user)]) -> dict[str, Any]:
+    async def _checker(
+        user: Annotated[dict[str, Any], Depends(get_current_user)],
+    ) -> dict[str, Any]:
         if user.get("role") not in allowed:
             raise AppError("FORBIDDEN", "Role Anda tidak diizinkan.", status=403)
         return user

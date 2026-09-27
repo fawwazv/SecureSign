@@ -19,6 +19,5 @@ async def connect_db() -> None:
 
 
 async def disconnect_db() -> None:
-    global _db
     if _db is not None and _db.is_connected():
         await _db.disconnect()

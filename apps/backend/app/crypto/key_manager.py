@@ -11,8 +11,8 @@ import os
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-from app.crypto import ecdsa, ed25519, rsa
 from app.core.config import settings
+from app.crypto import ecdsa, ed25519, rsa
 
 ALGORITHMS = ("RSA_PSS_2048", "ECDSA_P256", "ED25519")
 _GENERATORS = {

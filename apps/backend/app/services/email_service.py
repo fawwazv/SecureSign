@@ -56,7 +56,7 @@ def send_verification_email(email: str, token: str) -> str:
     )
     html = (
         f"<p>Halo,</p><p>Terima kasih telah mendaftar <b>SignVault</b>.</p>"
-        f"<p><a href=\"{link}\">Klik di sini untuk verifikasi email</a> "
+        f'<p><a href="{link}">Klik di sini untuk verifikasi email</a> '
         f"(berlaku 24 jam, sekali pakai).</p>"
         f"<p>Abaikan email ini jika Anda tidak mendaftar.</p>"
     )
