@@ -6,6 +6,7 @@ on:
     paths: ["apps/backend/**", "packages/database/**", "docs/api-docs/**"]
   pull_request:
     paths: ["apps/backend/**", "packages/database/**", "docs/api-docs/**"]
+  workflow_dispatch: {}
 
 jobs:
   lint:
