@@ -3,6 +3,15 @@ dist/
 apps/frontend/node_modules/
 apps/frontend/dist/
 apps/frontend/.env
+apps/frontend/.env.local
 apps/backend/.env
+apps/backend/.env.local
+apps/backend/__pycache__/
+apps/backend/.venv/
+apps/backend/venv/
+*.pyc
 .env
 .env.local
+!.env.example
+**/.env.example
+!**/.env.example

@@ -1,0 +1,166 @@
+// SignVault — Prisma Schema (sumber kebenaran data model, prd.md §9)
+// DB: Supabase Postgres. Runtime pakai DATABASE_URL (pooler :6543),
+// DDL/migrasi pakai DIRECT_URL (session pooler :5432).
+
+generator client {
+  provider = "prisma-client-py"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ORG_ADMIN
+  SIGNER
+  VERIFIER
+}
+
+enum KeyAlgorithm {
+  RSA_PSS_2048
+  ECDSA_P256
+  ED25519
+}
+
+enum DocumentStatus {
+  DRAFT
+  PENDING
+  SIGNED
+  REJECTED
+}
+
+enum SignRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  passwordHash      String    @map("password_hash")
+  fullName          String    @map("full_name")
+  organization      String?
+  phone             String?
+  role              Role      @default(SIGNER)
+  emailVerified     Boolean   @default(false) @map("email_verified")
+  verificationToken String?   @map("verification_token")
+  verificationExpiry DateTime? @map("verification_expiry")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  keyPairs      KeyPair[]
+  documents     Document[]     @relation("OrgDocuments")
+  signRequests  SignRequest[]  @relation("SignerRequests")
+  signatures    Signature[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model KeyPair {
+  id                 String       @id @default(cuid())
+  ownerId            String       @map("owner_id")
+  owner              User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  algorithm          KeyAlgorithm
+  publicKey          String       @map("public_key") // PEM / base64
+  encryptedPrivateKey String      @map("encrypted_private_key") // AES-256-GCM ciphertext (base64)
+  privateKeyNonce    String       @map("private_key_nonce") // GCM nonce (base64)
+  revoked            Boolean      @default(false)
+  revokedAt          DateTime?    @map("revoked_at")
+  createdAt          DateTime     @default(now()) @map("created_at")
+
+  signatures Signature[]
+
+  @@map("key_pairs")
+}
+
+model Document {
+  id           String         @id @default(cuid())
+  uploaderId   String         @map("uploader_id")
+  uploader     User           @relation("OrgDocuments", fields: [uploaderId], references: [id], onDelete: Cascade)
+  title        String
+  description  String?
+  storagePath  String         @map("storage_path") // path di Supabase Storage
+  fileHash     String         @map("file_hash") // SHA-256 hex dari byte PDF asli
+  metadata     Json           @default("{}") // metadata kanonis (JCS) yang ikut ditandatangani
+  status       DocumentStatus @default(DRAFT)
+  version      Int            @default(1) // optimistic locking untuk batch sign
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  signRequests SignRequest[]
+  signatures   Signature[]
+
+  @@map("documents")
+}
+
+model SignRequest {
+  id          String            @id @default(cuid())
+  documentId  String            @map("document_id")
+  document    Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  signerId    String            @map("signer_id")
+  signer      User              @relation("SignerRequests", fields: [signerId], references: [id], onDelete: Cascade)
+  status      SignRequestStatus @default(PENDING)
+  message     String? // pesan dari Org Admin
+  rejectReason String?          @map("reject_reason")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  signature Signature?
+
+  @@unique([documentId, signerId])
+  @@map("sign_requests")
+}
+
+model Signature {
+  id               String      @id @default(cuid()) // = sig_id untuk verifikasi publik
+  documentId       String      @map("document_id")
+  document         Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  signerId         String      @map("signer_id")
+  signer           User        @relation(fields: [signerId], references: [id], onDelete: Cascade)
+  keyPairId        String      @map("key_pair_id")
+  keyPair          KeyPair     @relation(fields: [keyPairId], references: [id])
+  signRequestId    String?     @unique @map("sign_request_id")
+  signRequest      SignRequest? @relation(fields: [signRequestId], references: [id])
+  algorithm        KeyAlgorithm
+  signatureValue   String      @map("signature_value") // base64 signature atas SHA-256(PDF)+metadata
+  signedHash       String      @map("signed_hash") // SHA-256 hex PDF saat ditandatangani
+  canonicalMetadata String     @map("canonical_metadata") // JCS/RFC 8785
+  qrPayload        String      @map("qr_payload") // link verifikasi yang di-embed ke QR
+  signedPdfPath    String?     @map("signed_pdf_path") // PDF ber-QR di Storage
+  createdAt        DateTime    @default(now()) @map("created_at")
+
+  @@map("signatures")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?  @map("actor_id")
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action    String // REGISTER, LOGIN, UPLOAD, REQUEST_SIGN, APPROVE, REJECT, VERIFY, REVOKE_KEY, ...
+  entity    String? // nama entity terkait (document, signature, ...)
+  entityId  String?  @map("entity_id")
+  details   Json     @default("{}")
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // SIGN_REQUEST, SIGNED, REJECTED, KEY_REVOKED, ...
+  title     String
+  message   String
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("notifications")
+}
