@@ -1,0 +1,1017 @@
+openapi: 3.0.3
+info:
+  title: SignVault API
+  version: 0.1.0
+  description: |
+    Kontrak API SignVault v0.1 (sumber kebenaran, prd.md §10).
+    Scope: backend (apps/backend, packages/database, docs/api-docs).
+    Ikut prd-backend.md §4 secara ketat. Base path: /api/v1.
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local dev (Uvicorn native, tanpa Docker)
+tags:
+  - name: auth
+    description: Registrasi, verifikasi email, login, refresh, logout
+  - name: users
+    description: Profil user yang sedang login
+  - name: keys
+    description: Generate, list, revoke key pair
+  - name: documents
+    description: Upload, list, detail dokumen + request signature
+  - name: sign-requests
+    description: Approve, batch-approve, reject oleh Signer
+  - name: verify
+    description: Verifikasi publik tanpa login
+  - name: audit-logs
+    description: Audit log immutable
+  - name: notifications
+    description: Notifikasi in-app
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Registrasi akun baru (6 field)
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 'Terdaftar, email verifikasi terkirim (mode dev: link ada di log server)'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /auth/verify-email:
+    post:
+      tags: [auth]
+      summary: Verifikasi email dengan token sekali pakai (expired 24 jam)
+      operationId: verifyEmail
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+      responses:
+        '200':
+          description: Email terverifikasi, akun aktif
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /auth/resend-verification:
+    post:
+      tags: [auth]
+      summary: Kirim ulang email verifikasi
+      operationId: resendVerification
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendVerificationRequest'
+      responses:
+        '200':
+          description: Email terkirim (selalu 200 agar tidak bocor status akun)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login dengan email terverifikasi
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login sukses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Email belum terverifikasi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Tukar refresh token menjadi pasangan token baru (rotation)
+      operationId: refresh
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Token baru
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Logout (revoke refresh token)
+      operationId: logout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '200':
+          description: Logout sukses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /users/me:
+    get:
+      tags: [users]
+      summary: Profil user yang sedang login
+      operationId: getMe
+      responses:
+        '200':
+          description: Profil user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /keys/generate:
+    post:
+      tags: [keys]
+      summary: Generate key pair (private key dienkripsi AES-256-GCM)
+      operationId: generateKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateKeyRequest'
+      responses:
+        '201':
+          description: Key pair terbuat (private key TIDAK pernah dikembalikan plaintext)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyPair'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /keys:
+    get:
+      tags: [keys]
+      summary: Daftar key pair milik signer
+      operationId: listKeys
+      responses:
+        '200':
+          description: Daftar key
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KeyPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /keys/{id}/revoke:
+    post:
+      tags: [keys]
+      summary: Revoke key (Super Admin). Key rotation = revoke + generate baru
+      operationId: revokeKey
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Key di-revoke
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyPair'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /documents:
+    post:
+      tags: [documents]
+      summary: Upload PDF (Org Admin, max 25 MB)
+      operationId: uploadDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadDocumentRequest'
+      responses:
+        '201':
+          description: Dokumen terupload, hash SHA-256 dihitung
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    get:
+      tags: [documents]
+      summary: Daftar dokumen (paginated, filter status)
+      operationId: listDocuments
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/DocumentStatus'
+      responses:
+        '200':
+          description: Daftar dokumen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /documents/{id}:
+    get:
+      tags: [documents]
+      summary: Detail dokumen (butuh auth)
+      operationId: getDocument
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      responses:
+        '200':
+          description: Detail dokumen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /documents/{id}/request-sign:
+    post:
+      tags: [documents]
+      summary: Org Admin meminta tanda tangan ke Signer
+      operationId: requestSign
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestSignRequest'
+      responses:
+        '201':
+          description: SignRequest terbuat + notifikasi terkirim ke Signer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /sign-requests/pending:
+    get:
+      tags: [sign-requests]
+      summary: Daftar request menunggu tanda tangan (Signer)
+      operationId: listPendingSignRequests
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Daftar pending
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignRequestPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /sign-requests/{id}/approve:
+    post:
+      tags: [sign-requests]
+      summary: Signer menyetujui + menandatangani satu dokumen (QR tertempel)
+      operationId: approveSignRequest
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveRequest'
+      responses:
+        '201':
+          description: Signature terbuat
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Signature'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /sign-requests/batch-approve:
+    post:
+      tags: [sign-requests]
+      summary: Batch signing (transaksi + optimistic locking)
+      operationId: batchApproveSignRequests
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchApproveRequest'
+      responses:
+        '200':
+          description: Hasil per item (sukses/gagal 개별, tidak setengah jalan)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchApproveResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /sign-requests/{id}/reject:
+    post:
+      tags: [sign-requests]
+      summary: Signer menolak dokumen beserta alasan
+      operationId: rejectSignRequest
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectRequest'
+      responses:
+        '200':
+          description: Ditolak
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /verify/{sig_id}:
+    get:
+      tags: [verify]
+      summary: Verifikasi publik via QR/link tanpa login
+      operationId: verifyBySigId
+      security: []
+      parameters:
+        - name: sig_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Hasil verifikasi VALID / TIDAK VALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResult'
+  /verify/upload:
+    post:
+      tags: [verify]
+      summary: Verifikasi publik via upload PDF tanpa login
+      operationId: verifyUpload
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Hasil verifikasi VALID / TIDAK VALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /audit-logs:
+    get:
+      tags: [audit-logs]
+      summary: 'Audit log (Super Admin, Org Admin). Immutable: tanpa POST/PUT/DELETE'
+      operationId: listAuditLogs
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Daftar audit log
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /notifications:
+    get:
+      tags: [notifications]
+      summary: Notifikasi in-app user yang login
+      operationId: listNotifications
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Daftar notifikasi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationPage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    PageParam:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+  responses:
+    BadRequest:
+      description: Request tidak valid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Unauthorized:
+      description: Token hilang / tidak valid / kedaluwarsa
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Forbidden:
+      description: Role tidak diizinkan
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    NotFound:
+      description: Resource tidak ditemukan
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Conflict:
+      description: Konflik status (mis. sudah di-sign / double request)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+  schemas:
+    ErrorBody:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: UNAUTHORIZED
+            message:
+              type: string
+              example: Token tidak valid atau kedaluwarsa.
+    MessageResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+    Role:
+      type: string
+      enum: [SUPER_ADMIN, ORG_ADMIN, SIGNER, VERIFIER]
+    KeyAlgorithm:
+      type: string
+      enum: [RSA_PSS_2048, ECDSA_P256, ED25519]
+    DocumentStatus:
+      type: string
+      enum: [DRAFT, PENDING, SIGNED, REJECTED]
+    SignRequestStatus:
+      type: string
+      enum: [PENDING, APPROVED, REJECTED]
+    RegisterRequest:
+      type: object
+      required: [fullName, email, password, organization, role, purpose]
+      properties:
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 8
+        organization:
+          type: string
+        role:
+          type: string
+          enum: [ORG_ADMIN, SIGNER]
+        purpose:
+          type: string
+          description: Tujuan penggunaan; dicatat di audit log, bukan kolom user
+    VerifyEmailRequest:
+      type: object
+      required: [email, token]
+      properties:
+        email:
+          type: string
+          format: email
+        token:
+          type: string
+    ResendVerificationRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+    LogoutRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+    User:
+      type: object
+      required: [id, fullName, email, organization, role, emailVerified, createdAt]
+      properties:
+        id:
+          type: string
+        fullName:
+          type: string
+        email:
+          type: string
+        organization:
+          type: string
+        role:
+          $ref: '#/components/schemas/Role'
+        emailVerified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    AuthTokens:
+      type: object
+      required: [accessToken, refreshToken, expiresIn]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          description: Detik hingga access token kedaluwarsa (900 = 15 menit)
+    LoginResponse:
+      type: object
+      required: [user, tokens]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        tokens:
+          $ref: '#/components/schemas/AuthTokens'
+    GenerateKeyRequest:
+      type: object
+      required: [algorithm]
+      properties:
+        algorithm:
+          $ref: '#/components/schemas/KeyAlgorithm'
+    KeyPair:
+      type: object
+      required: [id, algorithm, publicKey, revoked, createdAt]
+      properties:
+        id:
+          type: string
+        algorithm:
+          $ref: '#/components/schemas/KeyAlgorithm'
+        publicKey:
+          type: string
+          description: PEM / base64 public key
+        revoked:
+          type: boolean
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    UploadDocumentRequest:
+      type: object
+      required: [file, title]
+      properties:
+        file:
+          type: string
+          format: binary
+          description: File PDF, max 25 MB
+        title:
+          type: string
+        description:
+          type: string
+        metadata:
+          type: string
+          description: JSON string metadata kanonis yang ikut ditandatangani
+    Document:
+      type: object
+      required: [id, title, storagePath, fileHash, metadata, status, version, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        storagePath:
+          type: string
+        fileHash:
+          type: string
+          description: SHA-256 hex dari byte PDF asli
+        metadata:
+          type: object
+        status:
+          $ref: '#/components/schemas/DocumentStatus'
+        version:
+          type: integer
+          description: Optimistic locking untuk batch sign
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    RequestSignRequest:
+      type: object
+      required: [signerId]
+      properties:
+        signerId:
+          type: string
+        message:
+          type: string
+    SignRequest:
+      type: object
+      required: [id, documentId, signerId, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        documentId:
+          type: string
+        signerId:
+          type: string
+        status:
+          $ref: '#/components/schemas/SignRequestStatus'
+        message:
+          type: string
+          nullable: true
+        rejectReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ApproveRequest:
+      type: object
+      required: [keyPairId]
+      properties:
+        keyPairId:
+          type: string
+    BatchApproveRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [signRequestId, keyPairId]
+            properties:
+              signRequestId:
+                type: string
+              keyPairId:
+                type: string
+    BatchApproveItemResult:
+      type: object
+      required: [signRequestId, success]
+      properties:
+        signRequestId:
+          type: string
+        success:
+          type: boolean
+        signatureId:
+          type: string
+          nullable: true
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+          nullable: true
+    BatchApproveResponse:
+      type: object
+      required: [results]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/BatchApproveItemResult'
+    RejectRequest:
+      type: object
+      required: [rejectReason]
+      properties:
+        rejectReason:
+          type: string
+    Signature:
+      type: object
+      required: [id, documentId, signerId, keyPairId, algorithm, signatureValue, signedHash, canonicalMetadata, qrPayload, createdAt]
+      properties:
+        id:
+          type: string
+          description: sig_id untuk verifikasi publik
+        documentId:
+          type: string
+        signerId:
+          type: string
+        keyPairId:
+          type: string
+        algorithm:
+          $ref: '#/components/schemas/KeyAlgorithm'
+        signatureValue:
+          type: string
+          description: Base64 signature atas SHA-256(PDF) + metadata kanonis
+        signedHash:
+          type: string
+        canonicalMetadata:
+          type: string
+        qrPayload:
+          type: string
+          description: Link verifikasi yang di-embed ke QR
+        signedPdfPath:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    VerifyResult:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [VALID, INVALID]
+        documentName:
+          type: string
+        signerName:
+          type: string
+        signedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        auditTrail:
+          type: array
+          items:
+            type: object
+            required: [event, at]
+            properties:
+              event:
+                type: string
+              at:
+                type: string
+                format: date-time
+              actor:
+                type: string
+    AuditLog:
+      type: object
+      required: [id, action, details, createdAt]
+      properties:
+        id:
+          type: string
+        actorId:
+          type: string
+          nullable: true
+        action:
+          type: string
+        entity:
+          type: string
+          nullable: true
+        entityId:
+          type: string
+          nullable: true
+        details:
+          type: object
+        ipAddress:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    Notification:
+      type: object
+      required: [id, type, title, message, isRead, createdAt]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        message:
+          type: string
+        isRead:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    DocumentPage:
+      type: object
+      required: [data, page, limit, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Document'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+    SignRequestPage:
+      type: object
+      required: [data, page, limit, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignRequest'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+    AuditLogPage:
+      type: object
+      required: [data, page, limit, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLog'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+    NotificationPage:
+      type: object
+      required: [data, page, limit, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Notification'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+security:
+  - bearerAuth: []
