@@ -19,5 +19,8 @@ test.describe('alur publik SignVault (FE1)', () => {
     await page.goto('/verify')
     await expect(page.getByRole('heading', { name: /verifikasi dokumen/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /upload pdf/i })).toBeVisible()
+    await expect(page.getByRole('tab', { name: /scan qr/i })).toBeVisible()
+    await page.getByRole('tab', { name: /scan qr/i }).click()
+    await expect(page.getByText(/arahkan kamera|tidak mendukung/i).first()).toBeVisible()
   })
 })
