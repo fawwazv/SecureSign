@@ -22,7 +22,7 @@
         </Button>
       </div>
 
-      <div v-else class="sv-card mt-4 p-6">
+      <div v-else-if="mode === 'token'" class="sv-card mt-4 p-6">
         <Input
           id="token" v-model="token" label="Token / tautan QR"
           placeholder="cth. sv_9f2c… atau tempel URL verifikasi" :error="tokenTouched && !token ? 'Token wajib diisi.' : ''"
@@ -31,6 +31,24 @@
         <Button class="mt-4" :loading="loading" :disabled="!token || loading" @click="verifyToken">
           Verifikasi token
         </Button>
+      </div>
+
+      <div v-else class="sv-card mt-4 p-6">
+        <p class="text-sm text-slate-600">
+          Arahkan kamera ke QR pada dokumen. Hasil pindaian otomatis diverifikasi.
+        </p>
+        <Alert v-if="!qrSupported" variant="warning" title="Kamera tidak tersedia" class="mt-3">
+          Akses kamera membutuhkan koneksi aman (HTTPS atau localhost) dan izin browser.
+          Gunakan tab Upload PDF atau Token, atau buka situs via HTTPS.
+        </Alert>
+        <div v-else class="mt-3 overflow-hidden rounded-md border border-light-blue bg-black">
+          <div id="sv-qr-reader" class="w-full" />
+        </div>
+        <p v-if="scanStatus" class="mt-2 text-sm text-slate-600" role="status">{{ scanStatus }}</p>
+        <div v-if="qrSupported" class="mt-4 flex flex-wrap gap-2">
+          <Button v-if="!scanning" :disabled="loading" @click="startScan">Mulai kamera</Button>
+          <Button v-else variant="secondary" @click="stopScan">Hentikan</Button>
+        </div>
       </div>
 
       <Alert v-if="error" variant="error" title="Verifikasi gagal" class="mt-4">{{ error }}</Alert>
@@ -60,16 +78,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { Html5Qrcode } from 'html5-qrcode'
 import { Alert, Badge, Button, Card, Input, Table, Tabs } from '@/components/ui'
 import { verifyService } from '@/services/authService'
 import { toApiMessage } from '@/services/apiClient'
 import { formatDate } from '@/utils/formatDate'
+import { extractTokenFromQrText, isCameraQrSupported } from '@/utils/qr'
 import type { VerifyResult } from '@/types/api'
 
 const tabs = [
   { value: 'upload', label: 'Upload PDF' },
   { value: 'token', label: 'Token / QR' },
+  { value: 'scan', label: 'Scan QR' },
 ]
 const mode = ref('upload')
 const file = ref<File | null>(null)
@@ -130,4 +151,63 @@ async function verifyToken() {
     loading.value = false
   }
 }
+
+// --- Scan QR via kamera (html5-qrcode: lintas browser — Chrome, Edge, Firefox, Safari) ---
+const scanning = ref(false)
+const scanStatus = ref('')
+const qrSupported = ref(isCameraQrSupported())
+let scanner: Html5Qrcode | null = null
+
+async function startScan() {
+  error.value = ''
+  result.value = null
+  scanStatus.value = ''
+  if (!qrSupported.value || !navigator.mediaDevices?.getUserMedia) {
+    qrSupported.value = false
+    scanStatus.value = 'Kamera tidak tersedia di perangkat/browser ini.'
+    return
+  }
+  try {
+    stopScannerInstance()
+    scanStatus.value = 'Meminta akses kamera…'
+    scanner = new Html5Qrcode('sv-qr-reader')
+    scanning.value = true
+    await scanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      async (decodedText: string) => {
+        const found = extractTokenFromQrText(decodedText)
+        scanStatus.value = `QR terbaca: ${found}`
+        await stopScan()
+        token.value = found
+        await verifyToken()
+      },
+      () => {
+        /* frame tanpa QR — abaikan, lanjutkan memindai */
+      },
+    )
+    scanStatus.value = 'Arahkan kamera ke QR…'
+  } catch {
+    scanStatus.value = 'Akses kamera ditolak atau tidak tersedia. Periksa izin browser.'
+    await stopScan()
+  }
+}
+
+function stopScannerInstance() {
+  if (scanner) {
+    const s = scanner
+    scanner = null
+    s.stop().catch(() => {})
+    s.clear()
+  }
+}
+
+async function stopScan() {
+  stopScannerInstance()
+  scanning.value = false
+}
+
+onBeforeUnmount(() => {
+  stopScannerInstance()
+})
 </script>
