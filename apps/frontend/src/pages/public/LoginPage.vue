@@ -54,6 +54,7 @@ import { computed, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Alert, Button, Card, Input } from '@/components/ui'
 import { useAuth } from '@/composables/useAuth'
+import { toApiCode } from '@/services/apiClient'
 import { isEmail } from '@/utils/validators'
 
 const route = useRoute()
@@ -90,8 +91,12 @@ async function onSubmit() {
     else if (user.role === 'ORG_ADMIN') await router.replace('/org')
     else if (user.role === 'SIGNER') await router.replace('/signer')
     else await router.replace('/')
-  } catch {
-    /* error sudah di store */
+  } catch (e) {
+    // 403 EMAIL_NOT_VERIFIED → arahkan ke verifikasi + tawarkan kirim ulang.
+    if (toApiCode(e) === 'EMAIL_NOT_VERIFIED') {
+      await router.replace({ path: '/verify-email', query: { email: email.value.trim() } })
+    }
+    /* error lain sudah di store */
   }
 }
 </script>

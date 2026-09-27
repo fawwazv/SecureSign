@@ -1,21 +1,19 @@
 /**
- * Tipe hasil generate dari `docs/api-docs/openapi.yaml` (openapi-typescript).
+ * Tipe kontrak API SignVault — dihasilkan dari `docs/api-docs/openapi.yaml`.
  *
- * Catatan FE1: file ini adalah stub yang mengikuti kontrak PRD utama §10
- * (versioning /api/v1, error { error: { code, message } }, pagination).
- * Setelah BE menerbitkan openapi.yaml, jalankan:
- *   npx openapi-typescript ../../docs/api-docs/openapi.yaml -o src/types/api.ts
- * dan ganti isi file ini dengan output generator.
+ * - `openapi.d.ts`: output murni `openapi-typescript` (JANGAN edit manual).
+ *   Regenerate: `npx openapi-typescript ../../docs/api-docs/openapi.yaml -o src/types/openapi.d.ts`
+ * - File ini: alias domain FE1 di atas skema generate agar service/halaman
+ *   memakai nama stabil. Sync dengan kontrak: openapi v0.1.0.
  */
+import type { components, paths } from './openapi'
 
-export type Role = 'SUPER_ADMIN' | 'ORG_ADMIN' | 'SIGNER' | 'VERIFIER'
+export type { paths }
+export type Schemas = components['schemas']
 
-export interface ApiErrorBody {
-  error: {
-    code: string
-    message: string
-  }
-}
+export type Role = components['schemas']['Role']
+export type ApiErrorBody = components['schemas']['ErrorBody']
+export type MessageResponse = components['schemas']['MessageResponse']
 
 export interface Paginated<T> {
   data: T[]
@@ -24,56 +22,12 @@ export interface Paginated<T> {
   total: number
 }
 
-export interface User {
-  id: string
-  fullName: string
-  email: string
-  organization: string
-  role: Role
-  emailVerified: boolean
-  createdAt: string
-}
+export type User = components['schemas']['User']
+export type AuthTokens = components['schemas']['AuthTokens']
+export type LoginResponse = components['schemas']['LoginResponse']
+export type RegisterPayload = components['schemas']['RegisterRequest']
+export type LoginPayload = components['schemas']['LoginRequest']
+export type VerifyEmailPayload = components['schemas']['VerifyEmailRequest']
 
-export interface AuthTokens {
-  accessToken: string
-  refreshToken: string
-  expiresIn: number
-}
-
-export interface RegisterPayload {
-  fullName: string
-  email: string
-  password: string
-  organization: string
-  role: Extract<Role, 'ORG_ADMIN' | 'SIGNER'>
-  purpose: string
-}
-
-export interface LoginPayload {
-  email: string
-  password: string
-}
-
-export interface VerifyResult {
-  status: 'VALID' | 'INVALID'
-  documentName?: string
-  signerName?: string
-  signedAt?: string
-  reason?: string
-  auditTrail?: Array<{ event: string; at: string; actor?: string }>
-}
-
-export interface paths {
-  '/auth/register': {
-    post: {
-      requestBody: { content: { 'application/json': RegisterPayload } }
-      responses: { 201: { content: { 'application/json': User } } }
-    }
-  }
-  '/auth/login': {
-    post: {
-      requestBody: { content: { 'application/json': LoginPayload } }
-      responses: { 200: { content: { 'application/json': { user: User; tokens: AuthTokens } } } }
-    }
-  }
-}
+export type DocumentStatus = components['schemas']['DocumentStatus']
+export type VerifyResult = components['schemas']['VerifyResult']

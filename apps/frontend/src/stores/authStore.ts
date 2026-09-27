@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia'
 import { authService } from '@/services/authService'
-import { toApiMessage } from '@/services/apiClient'
+import { toApiCode, toApiMessage } from '@/services/apiClient'
 import { useJWT } from '@/composables/useJWT'
-import type { RegisterPayload, User } from '@/types/api'
+import { loginErrorMessage } from '@/utils/validators'
+import type { LoginResponse, RegisterPayload, User } from '@/types/api'
 
 interface AuthState {
   user: User | null
@@ -66,17 +67,27 @@ export const useAuthStore = defineStore('auth', {
       this.isLoading = true
       this.error = null
       try {
-        const { user, tokens } = await authService.login({ email, password })
-        const { setTokens } = useJWT()
-        setTokens(tokens.accessToken, tokens.refreshToken)
-        this.user = user
-        localStorage.setItem('sv:user', JSON.stringify(user))
-        return user
+        const resp = await authService.login({ email, password })
+        this.hydrateFromLoginResponse(resp)
+        return resp.user
       } catch (e) {
-        this.error = toApiMessage(e, 'Email atau kata sandi salah.')
+        const code = toApiCode(e)
+        this.error = loginErrorMessage(code, toApiMessage(e, 'Email atau kata sandi salah.'))
         throw e
       } finally {
         this.isLoading = false
+      }
+    },
+
+    /** Simpan pasangan token rotasi BE + profil ke storage lokal. */
+    hydrateFromLoginResponse(resp: LoginResponse) {
+      const { setTokens } = useJWT()
+      setTokens(resp.tokens.accessToken, resp.tokens.refreshToken)
+      this.user = resp.user
+      try {
+        localStorage.setItem('sv:user', JSON.stringify(resp.user))
+      } catch {
+        /* abaikan */
       }
     },
 
