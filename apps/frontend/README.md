@@ -9,6 +9,16 @@ npm install
 npm run dev            # http://localhost:5173
 ```
 
+> Wajib setelah pull/clone baru: sinkronkan dependensi + browser e2e.
+> Gejala bila dilewati: `vue-tsc` error "Cannot find module",
+> `vite build` gagal resolve dep, `playwright test` gagal (browser hilang).
+>
+> ```bash
+> cd apps/frontend
+> npm ci                         # instal persis package-lock.json (atau npm install)
+> npx playwright install chromium  # browser e2e (sekali per mesin)
+> ```
+
 ## Skrip
 
 | Skrip | Fungsi |
