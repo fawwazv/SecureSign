@@ -4,7 +4,7 @@ import { AxiosError, AxiosHeaders } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
 import { authService } from '@/services/authService'
 import type { ApiErrorBody } from '@/types/api'
-import { isPhone, loginErrorMessage } from '@/utils/validators'
+import { completeProfileErrorMessage, isPhone, loginErrorMessage } from '@/utils/validators'
 
 vi.mock('@/services/authService', () => ({
   authService: {
@@ -61,6 +61,7 @@ describe('authStore Google + onboarding (FE1-4)', () => {
     const res = await store.loginWithGoogle('tok')
     expect(res.needsOnboarding).toBe(true)
     expect(store.needsOnboarding).toBe(true)
+    expect(store.profileCompleted).toBe(false)
     expect(store.roleHome()).toBe('/onboarding')
   })
 
@@ -87,6 +88,7 @@ describe('authStore Google + onboarding (FE1-4)', () => {
     })
     expect(user.profileCompleted).toBe(true)
     expect(store.needsOnboarding).toBe(false)
+    expect(store.profileCompleted).toBe(true)
     expect(store.roleHome()).toBe('/org')
   })
 
@@ -102,5 +104,9 @@ describe('authStore Google + onboarding (FE1-4)', () => {
     expect(isPhone('+628123456789')).toBe(true)
     expect(isPhone('08123456789')).toBe(true)
     expect(isPhone('abc')).toBe(false)
+  })
+
+  it('PROFILE_ALREADY_COMPLETED memetakan pesan onboarding', () => {
+    expect(completeProfileErrorMessage('PROFILE_ALREADY_COMPLETED')).toContain('sudah lengkap')
   })
 })

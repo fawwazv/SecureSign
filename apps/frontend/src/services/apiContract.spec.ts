@@ -1,8 +1,23 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AxiosError, AxiosHeaders } from 'axios'
-import { toApiCode, toApiMessage } from '@/services/apiClient'
+import { apiClient, toApiCode, toApiMessage } from '@/services/apiClient'
+import { authService } from '@/services/authService'
 import { loginErrorMessage, registerErrorMessage } from '@/utils/validators'
 import type { ApiErrorBody } from '@/types/api'
+
+vi.mock('@/services/apiClient', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/services/apiClient')>()
+  return {
+    ...actual,
+    apiClient: { post: vi.fn(), patch: vi.fn(), get: vi.fn() },
+  }
+})
+
+const post = vi.mocked(apiClient.post)
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
 
 function apiError(code: string, message: string): AxiosError<ApiErrorBody> {
   const err = new AxiosError<ApiErrorBody>(message)
@@ -34,5 +49,23 @@ describe('kontrak error BE', () => {
   it('memetakan kode login BE (403 EMAIL_NOT_VERIFIED)', () => {
     expect(loginErrorMessage('EMAIL_NOT_VERIFIED')).toContain('belum terverifikasi')
     expect(loginErrorMessage('INVALID_CREDENTIALS')).toContain('salah')
+  })
+
+  it('payload register FE1 mengirim phone + captchaToken', async () => {
+    post.mockResolvedValue({ data: { id: 'u-2' } })
+    await authService.register({
+      fullName: 'Tes',
+      email: 'tes@pt.id',
+      password: 'Rahasia123',
+      organization: 'PT Tes',
+      role: 'SIGNER',
+      purpose: 'testing',
+      phone: '+62811',
+      captchaToken: 'cap-tok',
+    })
+    expect(post).toHaveBeenCalledWith(
+      '/auth/register',
+      expect.objectContaining({ phone: '+62811', captchaToken: 'cap-tok' }),
+    )
   })
 })

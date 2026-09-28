@@ -56,3 +56,14 @@ export function loginErrorMessage(code?: string, fallback?: string): string {
       return fallback ?? 'Gagal masuk. Coba lagi dalam beberapa saat.'
   }
 }
+
+export function completeProfileErrorMessage(code?: string, fallback?: string): string {
+  switch (code) {
+    case 'PROFILE_ALREADY_COMPLETED':
+      return 'Profil sudah lengkap. Anda akan dialihkan ke dashboard.'
+    case 'CAPTCHA_FAILED':
+      return 'Verifikasi CAPTCHA gagal. Muat ulang CAPTCHA dan coba lagi.'
+    default:
+      return fallback ?? 'Penyimpanan profil gagal. Coba lagi.'
+  }
+}

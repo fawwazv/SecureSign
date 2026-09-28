@@ -1,6 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router'
 import LandingLayout from '@/layouts/LandingLayout.vue'
-import { guestOnly } from './guards'
+import { guestOnly, requireAuth, requireOnboarding } from './guards'
 
 /** Rute publik milik FE1: landing, auth, verifikasi email, verifikasi publik. */
 export const publicRoutes: RouteRecordRaw[] = [
@@ -39,6 +39,19 @@ export const publicRoutes: RouteRecordRaw[] = [
         name: 'verify-email',
         component: () => import('@/pages/public/VerifyEmailPage.vue'),
         meta: { title: 'Verifikasi Email — SignVault' },
+      },
+      {
+        path: 'auth/callback',
+        name: 'auth-callback',
+        component: () => import('@/pages/public/AuthCallback.vue'),
+        meta: { title: 'Login Google — SignVault' },
+      },
+      {
+        path: 'onboarding',
+        name: 'onboarding',
+        beforeEnter: [requireAuth, requireOnboarding],
+        component: () => import('@/pages/public/OnboardingPage.vue'),
+        meta: { title: 'Lengkapi Profil — SignVault' },
       },
       {
         path: 'verify',

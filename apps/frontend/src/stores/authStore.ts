@@ -2,11 +2,12 @@ import { defineStore } from 'pinia'
 import { authService } from '@/services/authService'
 import { toApiCode, toApiMessage } from '@/services/apiClient'
 import { useJWT } from '@/composables/useJWT'
-import { loginErrorMessage } from '@/utils/validators'
+import { completeProfileErrorMessage, loginErrorMessage } from '@/utils/validators'
 import type { CompleteProfilePayload, LoginResponse, RegisterPayload, User } from '@/types/api'
 
 interface AuthState {
   user: User | null
+  profileCompleted: boolean | null
   isLoading: boolean
   error: string | null
 }
@@ -21,18 +22,21 @@ function readUser(): User | null {
 }
 
 export const useAuthStore = defineStore('auth', {
-  state: (): AuthState => ({
-    user: readUser(),
-    isLoading: false,
-    error: null,
-  }),
+  state: (): AuthState => {
+    const cachedUser = readUser()
+    return {
+      user: cachedUser,
+      profileCompleted: cachedUser?.profileCompleted ?? null,
+      isLoading: false,
+      error: null,
+    }
+  },
 
   getters: {
     isAuthenticated: (s) => !!s.user,
     role: (s) => s.user?.role ?? null,
-    /** FE1-4: flag onboarding dari BE (default true agar user lama tidak terkunci). */
-    profileCompleted: (s) => s.user?.profileCompleted ?? true,
-    needsOnboarding: (s): boolean => !!s.user && (s.user.profileCompleted ?? true) === false,
+    /** FE1-4: state onboarding eksplisit; null berarti flag belum tersedia (user lama). */
+    needsOnboarding: (s): boolean => !!s.user && s.profileCompleted === false,
   },
 
   actions: {
@@ -101,7 +105,8 @@ export const useAuthStore = defineStore('auth', {
         const resp = await authService.loginWithGoogle({ idToken })
         this.hydrateFromLoginResponse({ user: resp.user, tokens: resp.tokens })
         // Sinkronkan flag BE (response Google membawa profileCompleted terpisah).
-        if (typeof resp.profileCompleted === 'boolean' && this.user) {
+        this.profileCompleted = resp.profileCompleted
+        if (this.user) {
           this.user = { ...this.user, profileCompleted: resp.profileCompleted }
           try {
             localStorage.setItem('sv:user', JSON.stringify(this.user))
@@ -126,6 +131,7 @@ export const useAuthStore = defineStore('auth', {
       try {
         const user = await authService.completeProfile(payload)
         this.user = { ...user, profileCompleted: true }
+        this.profileCompleted = true
         try {
           localStorage.setItem('sv:user', JSON.stringify(this.user))
         } catch {
@@ -133,7 +139,8 @@ export const useAuthStore = defineStore('auth', {
         }
         return this.user
       } catch (e) {
-        this.error = toApiMessage(e, 'Penyimpanan profil gagal. Coba lagi.')
+        const code = toApiCode(e)
+        this.error = completeProfileErrorMessage(code, toApiMessage(e, 'Penyimpanan profil gagal. Coba lagi.'))
         throw e
       } finally {
         this.isLoading = false
@@ -144,9 +151,11 @@ export const useAuthStore = defineStore('auth', {
     hydrateFromLoginResponse(resp: LoginResponse) {
       const { setTokens } = useJWT()
       setTokens(resp.tokens.accessToken, resp.tokens.refreshToken)
-      this.user = resp.user
+      const user = resp.user as User
+      this.user = user
+      this.profileCompleted = user.profileCompleted ?? null
       try {
-        localStorage.setItem('sv:user', JSON.stringify(resp.user))
+        localStorage.setItem('sv:user', JSON.stringify(user))
       } catch {
         /* abaikan */
       }
@@ -159,7 +168,9 @@ export const useAuthStore = defineStore('auth', {
         const { clearTokens } = useJWT()
         clearTokens()
         localStorage.removeItem('sv:user')
+        localStorage.removeItem('sv:google_credential')
         this.user = null
+        this.profileCompleted = null
       }
     },
   },
