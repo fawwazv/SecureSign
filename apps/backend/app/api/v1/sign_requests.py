@@ -47,8 +47,12 @@ async def list_pending(
     }
 
 
-@router.post("/sign-requests/{id}/approve", status_code=201,
-             response_model=SignatureResponse, response_model_by_alias=True)
+@router.post(
+    "/sign-requests/{id}/approve",
+    status_code=201,
+    response_model=SignatureResponse,
+    response_model_by_alias=True,
+)
 async def approve(
     id: str,
     payload: dict[str, Any],
@@ -81,11 +85,18 @@ async def batch_approve(
         try:
             async with db.tx(timeout=30000) as tx:
                 sig = await approve_one(tx, sr_id, user["id"], key_id, _ip(request))
-            results.append({"signRequestId": sr_id, "success": True,
-                            "signatureId": sig.id, "error": None})
+            results.append(
+                {"signRequestId": sr_id, "success": True, "signatureId": sig.id, "error": None}
+            )
         except AppError as exc:
-            results.append({"signRequestId": sr_id, "success": False, "signatureId": None,
-                            "error": {"error": {"code": exc.code, "message": exc.message}}})
+            results.append(
+                {
+                    "signRequestId": sr_id,
+                    "success": False,
+                    "signatureId": None,
+                    "error": {"error": {"code": exc.code, "message": exc.message}},
+                }
+            )
     return {"results": results}
 
 
@@ -111,8 +122,16 @@ async def reject(
     doc = await db.document.find_unique(where={"id": sr.documentId})
     if doc:
         await db.document.update(where={"id": doc.id}, data={"status": "REJECTED"})
-        await notify(db, doc.uploaderId, "REJECTED", "Dokumen ditolak",
-                     f"'{doc.title}' ditolak: {reason}")
-    await log_action(db, "REJECT", actor_id=user["id"], entity="sign_request",
-                     entity_id=id, details={"reason": reason}, ip_address=_ip(request))
+        await notify(
+            db, doc.uploaderId, "REJECTED", "Dokumen ditolak", f"'{doc.title}' ditolak: {reason}"
+        )
+    await log_action(
+        db,
+        "REJECT",
+        actor_id=user["id"],
+        entity="sign_request",
+        entity_id=id,
+        details={"reason": reason},
+        ip_address=_ip(request),
+    )
     return to_sign_request_response(updated)

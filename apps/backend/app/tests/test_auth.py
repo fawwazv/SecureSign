@@ -141,7 +141,15 @@ def test_flow_penuh_register_verify_login_me_refresh_logout(client: TestClient) 
     try:
         user = _register(client, email)
         assert user["emailVerified"] is False
-        assert set(user) >= {"id", "fullName", "email", "organization", "role", "emailVerified", "createdAt"}
+        assert set(user) >= {
+            "id",
+            "fullName",
+            "email",
+            "organization",
+            "role",
+            "emailVerified",
+            "createdAt",
+        }
 
         resend = client.post("/api/v1/auth/resend-verification", json={"email": email})
         assert resend.status_code == 200

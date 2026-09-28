@@ -10,6 +10,10 @@ apps/backend/__pycache__/
 apps/backend/.venv/
 apps/backend/venv/
 *.pyc
+.coverage*
+htmlcov/
+.pytest_cache/
+apps/backend/.pytest_cache/
 .env
 .env.local
 !.env.example

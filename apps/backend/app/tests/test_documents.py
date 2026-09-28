@@ -81,16 +81,25 @@ def users(client: TestClient) -> dict:
     signer = f"d+{uuid.uuid4().hex[:10]}@example.com"
     _make_user(org, "ORG_ADMIN")
     _make_user(signer, "SIGNER")
-    data = {"org": org, "signer": signer,
-            "t_org": _login(client, org), "t_signer": _login(client, signer)}
+    data = {
+        "org": org,
+        "signer": signer,
+        "t_org": _login(client, org),
+        "t_signer": _login(client, signer),
+    }
     yield data
     _cleanup_user(org)
     _cleanup_user(signer)
 
 
-def _upload(client: TestClient, token: str, title: str = "Kontrak K-1",
-            content: bytes = FAKE_PDF, filename: str = "kontrak.pdf",
-            metadata: str = '{"no": "K-1"}') -> dict:
+def _upload(
+    client: TestClient,
+    token: str,
+    title: str = "Kontrak K-1",
+    content: bytes = FAKE_PDF,
+    filename: str = "kontrak.pdf",
+    metadata: str = '{"no": "K-1"}',
+) -> dict:
     files = {"file": (filename, io.BytesIO(content), "application/pdf")}
     res = client.post(
         "/api/v1/documents",
@@ -124,27 +133,32 @@ def test_list_pagination_dan_filter(client: TestClient, users: dict) -> None:
     for i in range(3):
         r = _upload(client, users["t_org"], title=f"Dok-{i}")
         assert r.status_code == 201, r.text
-    page1 = client.get("/api/v1/documents?page=1&limit=2",
-                       headers={"Authorization": f"Bearer {users['t_org']}"})
+    page1 = client.get(
+        "/api/v1/documents?page=1&limit=2", headers={"Authorization": f"Bearer {users['t_org']}"}
+    )
     assert page1.status_code == 200
     b1 = page1.json()
     assert (b1["page"], b1["limit"]) == (1, 2) and len(b1["data"]) == 2 and b1["total"] >= 3
-    filt = client.get("/api/v1/documents?status=DRAFT",
-                      headers={"Authorization": f"Bearer {users['t_org']}"})
+    filt = client.get(
+        "/api/v1/documents?status=DRAFT", headers={"Authorization": f"Bearer {users['t_org']}"}
+    )
     assert filt.status_code == 200 and all(d["status"] == "DRAFT" for d in filt.json()["data"])
-    bad = client.get("/api/v1/documents?status=ANEH",
-                     headers={"Authorization": f"Bearer {users['t_org']}"})
+    bad = client.get(
+        "/api/v1/documents?status=ANEH", headers={"Authorization": f"Bearer {users['t_org']}"}
+    )
     assert bad.status_code == 400
 
 
 def test_detail_akses(client: TestClient, users: dict) -> None:
     doc_id = _upload(client, users["t_org"]).json()["id"]
-    me = client.get(f"/api/v1/documents/{doc_id}",
-                    headers={"Authorization": f"Bearer {users['t_org']}"})
+    me = client.get(
+        f"/api/v1/documents/{doc_id}", headers={"Authorization": f"Bearer {users['t_org']}"}
+    )
     assert me.status_code == 200
     # Signer lain tanpa request -> 404 (tidak bocor).
-    other = client.get(f"/api/v1/documents/{doc_id}",
-                       headers={"Authorization": f"Bearer {users['t_signer']}"})
+    other = client.get(
+        f"/api/v1/documents/{doc_id}", headers={"Authorization": f"Bearer {users['t_signer']}"}
+    )
     assert other.status_code == 404
     assert client.get(f"/api/v1/documents/{doc_id}").status_code == 401
 
@@ -165,38 +179,51 @@ def test_request_sign_pending_notifikasi(client: TestClient, users: dict) -> Non
     sid = asyncio.new_event_loop().run_until_complete(_signer_id())
 
     # Signer id asal -> 400.
-    bad = client.post(f"/api/v1/documents/{doc_id}/request-sign",
-                      json={"signerId": "tidak-ada"},
-                      headers={"Authorization": f"Bearer {users['t_org']}"})
+    bad = client.post(
+        f"/api/v1/documents/{doc_id}/request-sign",
+        json={"signerId": "tidak-ada"},
+        headers={"Authorization": f"Bearer {users['t_org']}"},
+    )
     assert bad.status_code == 400
 
-    req = client.post(f"/api/v1/documents/{doc_id}/request-sign",
-                      json={"signerId": sid, "message": "Mohon tanda tangan"},
-                      headers={"Authorization": f"Bearer {users['t_org']}"})
+    req = client.post(
+        f"/api/v1/documents/{doc_id}/request-sign",
+        json={"signerId": sid, "message": "Mohon tanda tangan"},
+        headers={"Authorization": f"Bearer {users['t_org']}"},
+    )
     assert req.status_code == 201, req.text
     assert req.json()["status"] == "PENDING"
 
     # Duplikat -> 409.
-    dup = client.post(f"/api/v1/documents/{doc_id}/request-sign",
-                      json={"signerId": sid},
-                      headers={"Authorization": f"Bearer {users['t_org']}"})
+    dup = client.post(
+        f"/api/v1/documents/{doc_id}/request-sign",
+        json={"signerId": sid},
+        headers={"Authorization": f"Bearer {users['t_org']}"},
+    )
     assert dup.status_code == 409
 
     # Dokumen berubah PENDING.
-    det = client.get(f"/api/v1/documents/{doc_id}",
-                     headers={"Authorization": f"Bearer {users['t_org']}"})
+    det = client.get(
+        f"/api/v1/documents/{doc_id}", headers={"Authorization": f"Bearer {users['t_org']}"}
+    )
     assert det.json()["status"] == "PENDING"
 
     # Signer melihat pending + dapat notifikasi.
-    pend = client.get("/api/v1/sign-requests/pending",
-                      headers={"Authorization": f"Bearer {users['t_signer']}"})
+    pend = client.get(
+        "/api/v1/sign-requests/pending", headers={"Authorization": f"Bearer {users['t_signer']}"}
+    )
     assert pend.status_code == 200 and pend.json()["total"] >= 1
-    notif = client.get("/api/v1/notifications",
-                       headers={"Authorization": f"Bearer {users['t_signer']}"})
+    notif = client.get(
+        "/api/v1/notifications", headers={"Authorization": f"Bearer {users['t_signer']}"}
+    )
     assert notif.status_code == 200
     items = notif.json()["data"]
     assert any(n["type"] == "SIGN_REQUEST" for n in items)
 
     # Org Admin tidak boleh buka pending signer.
-    assert client.get("/api/v1/sign-requests/pending",
-                      headers={"Authorization": f"Bearer {users['t_org']}"}).status_code == 403
+    assert (
+        client.get(
+            "/api/v1/sign-requests/pending", headers={"Authorization": f"Bearer {users['t_org']}"}
+        ).status_code
+        == 403
+    )

@@ -44,8 +44,14 @@ def embed_qr(original: bytes, qr_png: bytes, caption: str) -> bytes:
     c = canvas.Canvas(stamp, pagesize=(width, height))
     x = width - QR_MARGIN_PT - QR_SIZE_PT
     y = QR_MARGIN_PT + 14
-    c.drawImage(ImageReader(io.BytesIO(qr_png)), x, y,
-                width=QR_SIZE_PT, height=QR_SIZE_PT, preserveAspectRatio=True)
+    c.drawImage(
+        ImageReader(io.BytesIO(qr_png)),
+        x,
+        y,
+        width=QR_SIZE_PT,
+        height=QR_SIZE_PT,
+        preserveAspectRatio=True,
+    )
     c.setFont("Helvetica", 7)
     c.drawString(x, QR_MARGIN_PT, caption[:40])
     c.save()

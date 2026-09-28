@@ -41,10 +41,10 @@ async def upload_document(
     file_hash = validate_pdf(content, file.filename or "dokumen.pdf")
     try:
         meta = json.loads(metadata) if metadata else {}
-        if not isinstance(meta, dict):
-            raise ValueError
     except ValueError:
         raise AppError("INVALID_METADATA", "Metadata harus JSON object.", status=400) from None
+    if not isinstance(meta, dict):
+        raise AppError("INVALID_METADATA", "Metadata harus JSON object.", status=400)
     path = f"{user['id']}/{uuid.uuid4().hex}.pdf"
     try:
         upload_file(path, content)
@@ -102,17 +102,19 @@ async def get_document(
         raise AppError("NOT_FOUND", "Dokumen tidak ditemukan.", status=404)
     allowed = doc.uploaderId == current["id"] or current["role"] == "SUPER_ADMIN"
     if not allowed:
-        req = await db.signrequest.find_first(
-            where={"documentId": id, "signerId": current["id"]}
-        )
+        req = await db.signrequest.find_first(where={"documentId": id, "signerId": current["id"]})
         allowed = req is not None
     if not allowed:
         raise AppError("NOT_FOUND", "Dokumen tidak ditemukan.", status=404)
     return to_document_response(doc)
 
 
-@router.post("/documents/{id}/request-sign", status_code=201, response_model=SignRequestResponse,
-             response_model_by_alias=True)
+@router.post(
+    "/documents/{id}/request-sign",
+    status_code=201,
+    response_model=SignRequestResponse,
+    response_model_by_alias=True,
+)
 async def request_sign(
     id: str,
     payload: dict[str, Any],
@@ -136,7 +138,14 @@ async def request_sign(
         data={"documentId": id, "signerId": signer_id, "message": message}
     )
     await db.document.update(where={"id": id}, data={"status": "PENDING"})
-    await notify(db, signer_id, "SIGN_REQUEST", "Permintaan tanda tangan",
-                 f"Dokumen '{doc.title}' menunggu tanda tangan Anda.")
-    await log_action(db, "REQUEST_SIGN", actor_id=user["id"], entity="sign_request", entity_id=sr.id)
+    await notify(
+        db,
+        signer_id,
+        "SIGN_REQUEST",
+        "Permintaan tanda tangan",
+        f"Dokumen '{doc.title}' menunggu tanda tangan Anda.",
+    )
+    await log_action(
+        db, "REQUEST_SIGN", actor_id=user["id"], entity="sign_request", entity_id=sr.id
+    )
     return to_sign_request_response(sr)

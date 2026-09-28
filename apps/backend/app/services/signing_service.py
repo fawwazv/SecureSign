@@ -11,8 +11,6 @@ import base64
 import secrets
 from typing import Any
 
-from prisma import Json
-
 from app.core.exceptions import AppError
 from app.crypto.canonical import canonicalize_str, signed_message
 from app.crypto.hashing import sha256_hex
@@ -63,8 +61,9 @@ async def approve_one(
     canonical = canonicalize_str(metadata)
     message = signed_message(file_hash, metadata)
     try:
-        signature = sign_with(str(key.algorithm), key.encryptedPrivateKey,
-                              key.privateKeyNonce, message)
+        signature = sign_with(
+            str(key.algorithm), key.encryptedPrivateKey, key.privateKeyNonce, message
+        )
     except Exception as exc:
         raise AppError("SIGN_FAILED", "Gagal menandatangani.", status=500) from exc
 
@@ -101,8 +100,14 @@ async def approve_one(
         }
     )
     await db.signrequest.update(where={"id": sr.id}, data={"status": "APPROVED"})
-    await notify(db, doc.uploaderId, "SIGNED", "Dokumen ditandatangani",
-                 f"'{doc.title}' telah ditandatangani.")
-    await log_action(db, "APPROVE", actor_id=signer_id, entity="signature",
-                     entity_id=sig_id, ip_address=ip)
+    await notify(
+        db,
+        doc.uploaderId,
+        "SIGNED",
+        "Dokumen ditandatangani",
+        f"'{doc.title}' telah ditandatangani.",
+    )
+    await log_action(
+        db, "APPROVE", actor_id=signer_id, entity="signature", entity_id=sig_id, ip_address=ip
+    )
     return sig
