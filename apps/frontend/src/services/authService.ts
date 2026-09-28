@@ -1,6 +1,9 @@
 import { apiClient } from './apiClient'
 import type {
   AuthTokens,
+  CompleteProfilePayload,
+  GoogleLoginPayload,
+  GoogleLoginResponse,
   LoginPayload,
   LoginResponse,
   RegisterPayload,
@@ -12,6 +15,18 @@ import type {
 export const authService = {
   async register(payload: RegisterPayload): Promise<User> {
     const { data } = await apiClient.post<User>('/auth/register', payload)
+    return data
+  },
+
+  /** FE1-3: login Google — POST /auth/google {idToken} -> {user, tokens, profileCompleted}. */
+  async loginWithGoogle(payload: GoogleLoginPayload): Promise<GoogleLoginResponse> {
+    const { data } = await apiClient.post<GoogleLoginResponse>('/auth/google', payload)
+    return data
+  },
+
+  /** FE1-3: onboarding — PATCH /users/me/complete-profile (Bearer). */
+  async completeProfile(payload: CompleteProfilePayload): Promise<User> {
+    const { data } = await apiClient.patch<User>('/users/me/complete-profile', payload)
     return data
   },
 
