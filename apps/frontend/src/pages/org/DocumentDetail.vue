@@ -47,7 +47,7 @@ import Card from '@/components/ui/Card.vue'
 import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
 import PDFPreview from '@/components/domain/PDFPreview.vue'
-import { documentService, type DocumentItem } from '@/services/documentService'
+import { documentService, previewUrlFor, type DocumentItem } from '@/services/documentService'
 import { toApiMessage } from '@/services/apiClient'
 import { useDocument } from '@/composables/useDocument'
 
@@ -77,7 +77,7 @@ const tone = computed(() => {
       return 'draft' as const
   }
 })
-const previewUrl = computed(() => `${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'}/documents/${id.value}/preview`)
+const previewUrl = computed(() => previewUrlFor(id.value))
 
 function back() {
   router.push('/org')

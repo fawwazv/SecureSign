@@ -50,7 +50,7 @@ import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
 import PDFPreview from '@/components/domain/PDFPreview.vue'
 import QRViewer from '@/components/domain/QRViewer.vue'
-import { documentService, type SignRequestItem } from '@/services/documentService'
+import { documentService, previewUrlFor, type SignRequestItem } from '@/services/documentService'
 import { toApiMessage } from '@/services/apiClient'
 import { useSignRequest } from '@/composables/useSignRequest'
 
@@ -69,7 +69,7 @@ const rejectOpen = ref(false)
 const reason = ref('')
 const rejectError = ref('')
 const acting = ref(false)
-const previewUrl = computed(() => `${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'}/documents/${item.value?.documentId ?? ''}/preview`)
+const previewUrl = computed(() => (item.value?.documentId ? previewUrlFor(item.value.documentId) : ''))
 
 function back() {
   router.push('/signer')
