@@ -38,14 +38,23 @@ enum SignRequestStatus {
   REJECTED
 }
 
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+}
+
 model User {
   id                String    @id @default(cuid())
   email             String    @unique
-  passwordHash      String    @map("password_hash")
+  passwordHash      String?   @map("password_hash") // NULL untuk user Google-only
   fullName          String    @map("full_name")
   organization      String?
   phone             String?
   role              Role      @default(SIGNER)
+  authProvider      AuthProvider @default(EMAIL) @map("auth_provider")
+  googleSub         String?   @unique @map("google_sub")
+  avatarUrl         String?   @map("avatar_url")
+  profileCompleted  Boolean   @default(false) @map("profile_completed")
   emailVerified     Boolean   @default(false) @map("email_verified")
   verificationToken String?   @map("verification_token")
   verificationExpiry DateTime? @map("verification_expiry")

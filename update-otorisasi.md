@@ -1,7 +1,7 @@
 # UPDATE OTORISASI — Google OAuth + Onboarding + CAPTCHA
 
 > Dokumen eksekusi untuk AI agent. Bahasa: Indonesia.
-> Status: RENCANA — belum dieksekusi. Jalankan sekuens §9 dari atas ke bawah.
+> Status: BE-1..BE-7 SELESAI (kode + test hijau); tersisa BE-8 (uji hidup + serah terima FE). Jalankan sekuens §9 dari atas ke bawah.
 > Keputusan terkunci: **Opsi A (BE verifikasi ID Token Google, tetap JWT internal) + Cloudflare Turnstile + form email 1-langkah**.
 
 ## 1. Tujuan

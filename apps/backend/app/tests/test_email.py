@@ -8,7 +8,11 @@ from app.core.config import settings
 from app.services import email_service
 
 
-def test_dev_fallback_tanpa_smtp() -> None:
+def test_dev_fallback_tanpa_smtp(monkeypatch) -> None:
+    # Paksa mode tanpa-SMTP agar independen dari isi .env lokal/CI.
+    monkeypatch.setattr(settings, "smtp_host", "")
+    monkeypatch.setattr(settings, "smtp_user", "")
+    monkeypatch.setattr(settings, "smtp_pass", "")
     assert settings.smtp_configured is False
     link = email_service.send_verification_email("a@example.com", "tok123")
     assert "tok123" in link and "/verify-email?" in link

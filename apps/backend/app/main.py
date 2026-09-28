@@ -34,7 +34,17 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.middleware("http")(rate_limit_middleware(settings.rate_limit_per_minute))
+    app.middleware("http")(
+        rate_limit_middleware(
+            settings.rate_limit_per_minute,
+            path_limits={
+                "/api/v1/auth/register": settings.auth_register_rate_per_min,
+                "/api/v1/auth/google": settings.auth_google_rate_per_min,
+                "/api/v1/auth/login": settings.auth_register_rate_per_min,
+                "/api/v1/auth/resend-verification": settings.auth_register_rate_per_min,
+            },
+        )
+    )
 
     register_exception_handlers(app)
 

@@ -19,11 +19,15 @@ class UserResponse(BaseModel):
     organization: str
     role: str
     email_verified: bool = Field(alias="emailVerified")
+    phone: str | None = Field(default=None, alias="phone")
+    auth_provider: str = Field(default="EMAIL", alias="authProvider")
+    profile_completed: bool = Field(default=False, alias="profileCompleted")
+    avatar_url: str | None = Field(default=None, alias="avatarUrl")
     created_at: str = Field(alias="createdAt")
 
 
 def to_user_response(user: object) -> dict:
-    """User prisma -> dict camelCase siap JSON."""
+    """User prisma -> dict camelCase siap JSON. Fallback aman untuk user lama."""
     return UserResponse(
         id=user.id,  # type: ignore[attr-defined]
         fullName=user.fullName,  # type: ignore[attr-defined]
@@ -31,5 +35,9 @@ def to_user_response(user: object) -> dict:
         organization=user.organization or "",  # type: ignore[attr-defined]
         role=str(user.role),  # type: ignore[attr-defined]
         emailVerified=user.emailVerified,  # type: ignore[attr-defined]
+        phone=getattr(user, "phone", None),
+        authProvider=str(getattr(user, "authProvider", "EMAIL")),
+        profileCompleted=bool(getattr(user, "profileCompleted", False)),
+        avatarUrl=getattr(user, "avatarUrl", None),
         createdAt=str(user.createdAt),  # type: ignore[attr-defined]
     ).model_dump(by_alias=True, mode="json")
