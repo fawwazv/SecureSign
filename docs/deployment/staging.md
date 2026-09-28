@@ -37,17 +37,8 @@ data smoke dibersihkan otomatis.
    ```
 6. Reverse proxy (nginx) + TLS 1.3 di depan Uvicorn; buka hanya port 443.
 7. Dari mesin apa pun: `API_BASE_URL=https://staging-API-Anda ENV=staging python scripts/smoke.py`
-8. Isi GitHub Secrets untuk CI (`DATABASE_URL`, `DIRECT_URL`, `SUPABASE_*`,
-   `JWT_SECRET`, `JWT_REFRESH_SECRET`, `KEK_SECRET`) — lihat `.github/workflows/backend.yml`.
 
 ## 3. Cegah secret bocor (PRD §16)
 
-Install gitleaks, lalu pasang hook sekali per clone:
-
-```bash
-# Windows (Git Bash): simpan sebagai .git/hooks/pre-commit (tanpa ekstensi)
-#!/bin/sh
-gitleaks protect --staged --config .gitleaks.toml
-```
-Config: `.gitleaks.toml` di root. Hook menolak commit bila ada secret staged.
-Perintah manual: `gitleaks detect --config .gitleaks.toml`.
+Jangan pernah commit file `.env` (sudah gitignored). Sebelum push, pastikan
+`git status` tidak menampilkan file `.env`.
