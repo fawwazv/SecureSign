@@ -91,6 +91,18 @@ export interface BatchApproveResult {
 
 const MAX_PDF_BYTES = 25 * 1024 * 1024
 
+/**
+ * URL pratinjau PDF untuk <iframe>.
+ * Kontrak OpenAPI v0.1 belum mendefinisikan endpoint download/preview
+ * (Document hanya membawa storagePath) — helper ini memakai konvensi
+ * `/documents/{id}/preview` agar satu titik yang diubah saat BE
+ * menerbitkan endpoint/signed-URL resmi. Lihat koordinasi FE2→BE.
+ */
+export function previewUrlFor(documentId: string): string {
+  const base = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
+  return `${base}/documents/${documentId}/preview`
+}
+
 export function assertPdfFile(file: File): void {
   if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
     throw new Error('File harus berformat PDF.')
