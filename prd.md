@@ -1,9 +1,9 @@
 # PRD UTAMA — SignVault
 
-**Versi:** 1.2
+**Versi:** 1.3
 **Status:** Final MVP
 **Pemilik:** Product Owner
-**Terakhir diperbarui:** 2026-09-27
+**Terakhir diperbarui:** 2026-09-28
 
 ---
 
@@ -20,7 +20,9 @@ SignVault adalah aplikasi web untuk menandatangani dokumen elektronik (PDF) seca
 - Workflow: Org Admin upload → Signer review → Signer tanda tangan → QR tertempel.
 - Verifikasi publik tanpa login.
 - Kunci privat terenkripsi AES-256-GCM.
-- Registrasi dengan verifikasi email sebelum login.
+- Registrasi email+password (1 form + CAPTCHA Turnstile) dengan verifikasi email sebelum login.
+- Login Google OAuth (ID Token via GIS, verifikasi JWKS di backend) + onboarding profil bila akun baru.
+- Akun email yang sama otomatis terhubung (auto-link) antara metode EMAIL dan GOOGLE.
 - Landing page informatif sebelum login.
 - JWT untuk autentikasi & otorisasi.
 - Multi-role: Super Admin, Org Admin, Signer, Verifier.
@@ -43,7 +45,7 @@ SignVault adalah aplikasi web untuk menandatangani dokumen elektronik (PDF) seca
 | Auth | Supabase Auth + JWT |
 | Storage | Supabase Storage |
 | Email | Supabase Auth / Resend / SendGrid |
-| CI/CD | GitHub Actions |
+| CI/CD | Verifikasi manual lokal (`ruff`, `black`, `pytest`, `smoke.py`) |
 | Monitoring | Sentry, Prometheus, Grafana |
 
 > **Catatan:** Deployment dijalankan langsung di server/VM tanpa kontainerisasi (tidak menggunakan Docker) untuk menjaga MVP tetap sederhana.
@@ -63,7 +65,7 @@ SignVault adalah aplikasi web untuk menandatangani dokumen elektronik (PDF) seca
 
 ## 5. Alur Utama
 
-1. **Registrasi & Verifikasi Email** — Form 6 field → email verifikasi → akun aktif → login.
+1. **Registrasi & Login** — (a) Email: form 1-langkah (kredensial + profil + CAPTCHA) → email verifikasi → akun aktif → login. (b) Google: tombol Google → onboarding profil (bila baru) → dashboard sesuai role.
 2. **Multi-Signer Workflow** — Org Admin upload → request sign → notifikasi → Signer review → sign/tolak → QR tertempel → notifikasi ke Org Admin.
 3. **Verifikasi Publik** — Scan QR/upload PDF → cek hash & signature → tampilkan VALID/TIDAK VALID.
 4. **Landing Page** — Header, Hero, Fitur, Cara Kerja, Use Case, Keamanan, FAQ, Footer.
@@ -75,8 +77,9 @@ SignVault adalah aplikasi web untuk menandatangani dokumen elektronik (PDF) seca
 | ID | Fitur | Deskripsi |
 |---|---|---|
 | F-01 | Landing Page | Halaman publik sebelum login. |
-| F-02 | Registrasi & Verifikasi Email | Form + email verifikasi via Supabase Auth. |
-| F-03 | Autentikasi & RBAC | Login via email terverifikasi, JWT (access + refresh). |
+| F-02 | Registrasi & Verifikasi Email | Form 1-langkah + CAPTCHA + email verifikasi. |
+| F-02b | Login Google + Onboarding | OAuth Google (GIS id_token, JWKS) + lengkapi profil bila akun baru. |
+| F-03 | Autentikasi & RBAC | Login email (terverifikasi) atau Google, JWT (access + refresh). |
 | F-04 | Pembangkitan Kunci | RSA-2048 PSS, ECDSA P-256, Ed25519. |
 | F-05 | Penyimpanan Kunci Privat | AES-256-GCM, KEK dari env/Supabase Vault. |
 | F-06 | Upload PDF | Org Admin upload ke Supabase Storage. |
@@ -324,7 +327,7 @@ SignVault adalah aplikasi web untuk menandatangani dokumen elektronik (PDF) seca
 | Sprint | Durasi | Fokus |
 |---|---|---|
 | Sprint 0 | 1 Minggu | Setup monorepo, Supabase, Prisma, Vue + Shadcn, FastAPI, JWT, Landing Page statis, CI/CD. |
-| Sprint 1 | 2 Minggu | Autentikasi, verifikasi email, RBAC, generate key pair, enkripsi private key. |
+| Sprint 1 | 2 Minggu | Autentikasi (email + Google OAuth), verifikasi email, CAPTCHA, onboarding profil, RBAC, generate key pair, enkripsi private key. |
 | Sprint 2 | 2 Minggu | Upload PDF, metadata, SignRequest, notifikasi, dashboard Org Admin. |
 | Sprint 3 | 2 Minggu | Dashboard Signer, preview PDF, single & batch signing, QR generation. |
 | Sprint 4 | 1 Minggu | Verifikasi publik, uji tamper, audit log, pengujian performa 30x. |

@@ -1,11 +1,13 @@
 openapi: 3.0.3
 info:
   title: SignVault API
-  version: 0.1.0
+  version: 0.2.0
   description: |
-    Kontrak API SignVault v0.1 (sumber kebenaran, prd.md §10).
+    Kontrak API SignVault v0.2 (sumber kebenaran, prd.md §10).
     Scope: backend (apps/backend, packages/database, docs/api-docs).
-    Ikut prd-backend.md §4 secara ketat. Base path: /api/v1.
+    v0.2: Google OAuth (POST /auth/google), onboarding (PATCH
+    /users/me/complete-profile), CAPTCHA Turnstile, rate-limit auth 10/mnt.
+    Base path: /api/v1.
 servers:
   - url: http://localhost:8000/api/v1
     description: Local dev (Uvicorn native, tanpa Docker)
@@ -170,6 +172,37 @@ paths:
                 $ref: '#/components/schemas/MessageResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /auth/google:
+    post:
+      tags: [auth]
+      summary: Login/daftar via Google ID Token (rate 10/mnt/IP)
+      operationId: googleLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleLoginRequest'
+      responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '200':
+          description: Sukses; profileCompleted=false berarti FE wajib ke /onboarding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoogleLoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /users/me:
     get:
       tags: [users]
@@ -184,6 +217,30 @@ paths:
                 $ref: '#/components/schemas/User'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /users/me/complete-profile:
+    patch:
+      tags: [users]
+      summary: Lengkapi profil (onboarding Google); sekali saja
+      operationId: completeProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteProfileRequest'
+      responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '200':
+          description: Profil lengkap
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /keys/generate:
     post:
       tags: [keys]
@@ -594,6 +651,24 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorBody'
+    RateLimited:
+      description: Melebihi batas request per menit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    BadGateway:
+      description: Layanan hulu (Google) gagal dijangkau
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    ServiceUnavailable:
+      description: Fitur belum dikonfigurasi di server
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
     NotFound:
       description: Resource tidak ditemukan
       content:
@@ -645,6 +720,8 @@ components:
       properties:
         fullName:
           type: string
+          minLength: 3
+          maxLength: 100
         email:
           type: string
           format: email
@@ -654,12 +731,21 @@ components:
           minLength: 8
         organization:
           type: string
+          minLength: 2
+          maxLength: 100
+        phone:
+          type: string
+          description: Opsional saat register; format internasional, dinormalisasi
         role:
           type: string
           enum: [ORG_ADMIN, SIGNER]
         purpose:
           type: string
+          minLength: 3
           description: Tujuan penggunaan; dicatat di audit log, bukan kolom user
+        captchaToken:
+          type: string
+          description: Token Turnstile; wajib bila CAPTCHA diaktifkan
     VerifyEmailRequest:
       type: object
       required: [email, token]
@@ -676,6 +762,9 @@ components:
         email:
           type: string
           format: email
+        captchaToken:
+          type: string
+          description: Token Turnstile; diverifikasi bila CAPTCHA diaktifkan
     LoginRequest:
       type: object
       required: [email, password]
@@ -686,6 +775,9 @@ components:
         password:
           type: string
           format: password
+        captchaToken:
+          type: string
+          description: Opsional; bila diisi akan diverifikasi
     RefreshRequest:
       type: object
       required: [refreshToken]
@@ -700,7 +792,7 @@ components:
           type: string
     User:
       type: object
-      required: [id, fullName, email, organization, role, emailVerified, createdAt]
+      required: [id, fullName, email, organization, role, emailVerified, authProvider, profileCompleted, createdAt]
       properties:
         id:
           type: string
@@ -714,6 +806,17 @@ components:
           $ref: '#/components/schemas/Role'
         emailVerified:
           type: boolean
+        phone:
+          type: string
+          nullable: true
+        authProvider:
+          type: string
+          enum: [EMAIL, GOOGLE]
+        profileCompleted:
+          type: boolean
+        avatarUrl:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -736,6 +839,46 @@ components:
           $ref: '#/components/schemas/User'
         tokens:
           $ref: '#/components/schemas/AuthTokens'
+    GoogleLoginRequest:
+      type: object
+      required: [idToken]
+      properties:
+        idToken:
+          type: string
+          description: Google ID Token dari GIS button
+    CompleteProfileRequest:
+      type: object
+      required: [fullName, organization, phone, role, purpose]
+      properties:
+        fullName:
+          type: string
+          minLength: 3
+          maxLength: 100
+        organization:
+          type: string
+          minLength: 2
+          maxLength: 100
+        phone:
+          type: string
+          description: Wajib saat onboarding; dinormalisasi
+        role:
+          type: string
+          enum: [ORG_ADMIN, SIGNER]
+        purpose:
+          type: string
+          minLength: 3
+          description: Dicatat di audit log, bukan kolom user
+    GoogleLoginResponse:
+      type: object
+      required: [user, tokens, profileCompleted]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        tokens:
+          $ref: '#/components/schemas/AuthTokens'
+        profileCompleted:
+          type: boolean
+          description: False = FE wajib arahkan ke /onboarding
     GenerateKeyRequest:
       type: object
       required: [algorithm]

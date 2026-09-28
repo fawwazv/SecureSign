@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 from prisma import Prisma
 
+import app.services.captcha_service as cap_mod
 from app.core.rate_limit import reset_rate_limiter
 from app.main import create_app
 
@@ -22,6 +24,36 @@ def client() -> TestClient:
     reset_rate_limiter()
     with TestClient(create_app(), raise_server_exceptions=False) as c:
         yield c
+
+
+class _FakeResp:
+    def __init__(self, ok: bool = True):
+        self._ok = ok
+
+    def json(self):
+        return {"success": self._ok}
+
+
+class _FakeClient:
+    def __init__(self, ok: bool = True):
+        self._ok = ok
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def post(self, *a, **k):
+        return _FakeResp(self._ok)
+
+
+class _FakeHttpx:
+    def __init__(self, ok: bool = True):
+        self._ok = ok
+
+    def AsyncClient(self, *a, **k):
+        return _FakeClient(self._ok)
 
 
 def _email() -> str:
@@ -52,19 +84,27 @@ def _cleanup(email: str) -> None:
 
 def _register(client: TestClient, email: str, role: str = "SIGNER") -> dict:
     reset_rate_limiter()
-    res = client.post(
-        "/api/v1/auth/register",
-        json={
-            "fullName": "Test User",
-            "email": email,
-            "password": "Rahasia123",
-            "organization": "PT Tes",
-            "role": role,
-            "purpose": "testing",
-        },
-    )
+    # Mock CAPTCHA agar independen dari setting .env lokal/CI (kunci asli/reject).
+    with patch.object(cap_mod, "httpx", _FakeHttpx(True)):
+        res = client.post(
+            "/api/v1/auth/register",
+            json={
+                "fullName": "Test User",
+                "email": email,
+                "password": "Rahasia123",
+                "organization": "PT Tes",
+                "phone": "+628123456789",
+                "role": role,
+                "purpose": "testing",
+                "captchaToken": "test-bypass",
+            },
+        )
     assert res.status_code == 201, res.text
-    return res.json()
+    body = res.json()
+    assert body["phone"] == "+628123456789"
+    assert body["authProvider"] == "EMAIL"
+    assert body["profileCompleted"] is True
+    return body
 
 
 def _token_from_db(email: str) -> str:
@@ -97,17 +137,18 @@ def test_register_menolak_role_dan_duplikat(client: TestClient) -> None:
         )
         assert bad.status_code in (400, 422), bad.text
         _register(client, email)
-        dup = client.post(
-            "/api/v1/auth/register",
-            json={
-                "fullName": "Y",
-                "email": email,
-                "password": "Rahasia123",
-                "organization": "PT Tes",
-                "role": "SIGNER",
-                "purpose": "coba",
-            },
-        )
+        with patch.object(cap_mod, "httpx", _FakeHttpx(True)):
+            dup = client.post(
+                "/api/v1/auth/register",
+                json={
+                    "fullName": "Yuni",
+                    "email": email,
+                    "password": "Rahasia123",
+                    "organization": "PT Tes",
+                    "role": "SIGNER",
+                    "purpose": "coba-duplikat",
+                },
+            )
         assert dup.status_code == 409
         assert dup.json()["error"]["code"] == "EMAIL_TAKEN"
     finally:
@@ -151,7 +192,8 @@ def test_flow_penuh_register_verify_login_me_refresh_logout(client: TestClient) 
             "createdAt",
         }
 
-        resend = client.post("/api/v1/auth/resend-verification", json={"email": email})
+        with patch.object(cap_mod, "httpx", _FakeHttpx(True)):
+            resend = client.post("/api/v1/auth/resend-verification", json={"email": email})
         assert resend.status_code == 200
 
         token = _token_from_db(email)
