@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from argon2 import PasswordHasher
@@ -25,9 +25,7 @@ def password_hasher(
 ) -> PasswordHasher:
     global _ph
     if _ph is None:
-        _ph = PasswordHasher(
-            memory_cost=memory_kb, time_cost=iterations, parallelism=parallelism
-        )
+        _ph = PasswordHasher(memory_cost=memory_kb, time_cost=iterations, parallelism=parallelism)
     return _ph
 
 
@@ -40,7 +38,7 @@ def verify_password(password: str, hashed: str) -> bool:
         return password_hasher().verify(hashed, password)
     except VerifyMismatchError:
         return False
-    except Exception:  # hash korup / format tak dikenal -> tolak
+    except Exception:  # noqa: BLE001 — hash korup / format tak dikenal -> tolak
         return False
 
 
@@ -54,7 +52,7 @@ def hash_refresh_token(token: str) -> str:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def create_access_token(user_id: str, role: str, secret: str, expire_minutes: int) -> str:

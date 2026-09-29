@@ -19,7 +19,7 @@ from app.services.signing_service import approve_one
 
 router = APIRouter(tags=["sign-requests"])
 
-SignerOnly = Annotated[dict[str, Any], Depends(require_role("SIGNER"))]
+SignerOnly = Annotated[dict[str, Any], Depends(require_role("SIGNER", "SUPER_ADMIN"))]
 
 
 def _ip(request: Request) -> str | None:
@@ -47,8 +47,12 @@ async def list_pending(
     }
 
 
-@router.post("/sign-requests/{id}/approve", status_code=201,
-             response_model=SignatureResponse, response_model_by_alias=True)
+@router.post(
+    "/sign-requests/{id}/approve",
+    status_code=201,
+    response_model=SignatureResponse,
+    response_model_by_alias=True,
+)
 async def approve(
     id: str,
     payload: dict[str, Any],
@@ -59,8 +63,11 @@ async def approve(
     key_pair_id = payload.get("keyPairId", "")
     if not key_pair_id:
         raise AppError("MISSING_KEY", "keyPairId wajib diisi.", status=400)
+    position = payload.get("position")
+    if position is not None and (not isinstance(position, str) or len(position.strip()) == 0):
+        raise AppError("INVALID_POSITION", "position harus teks tidak kosong.", status=400)
     async with db.tx(timeout=30000) as tx:
-        sig = await approve_one(tx, id, user["id"], key_pair_id, _ip(request))
+        sig = await approve_one(tx, id, user["id"], key_pair_id, _ip(request), position)
     return to_signature_response(sig)
 
 
@@ -78,14 +85,22 @@ async def batch_approve(
     for item in items:
         sr_id = item.get("signRequestId", "")
         key_id = item.get("keyPairId", "")
+        position = item.get("position")
         try:
             async with db.tx(timeout=30000) as tx:
-                sig = await approve_one(tx, sr_id, user["id"], key_id, _ip(request))
-            results.append({"signRequestId": sr_id, "success": True,
-                            "signatureId": sig.id, "error": None})
+                sig = await approve_one(tx, sr_id, user["id"], key_id, _ip(request), position)
+            results.append(
+                {"signRequestId": sr_id, "success": True, "signatureId": sig.id, "error": None}
+            )
         except AppError as exc:
-            results.append({"signRequestId": sr_id, "success": False, "signatureId": None,
-                            "error": {"error": {"code": exc.code, "message": exc.message}}})
+            results.append(
+                {
+                    "signRequestId": sr_id,
+                    "success": False,
+                    "signatureId": None,
+                    "error": {"error": {"code": exc.code, "message": exc.message}},
+                }
+            )
     return {"results": results}
 
 
@@ -111,8 +126,16 @@ async def reject(
     doc = await db.document.find_unique(where={"id": sr.documentId})
     if doc:
         await db.document.update(where={"id": doc.id}, data={"status": "REJECTED"})
-        await notify(db, doc.uploaderId, "REJECTED", "Dokumen ditolak",
-                     f"'{doc.title}' ditolak: {reason}")
-    await log_action(db, "REJECT", actor_id=user["id"], entity="sign_request",
-                     entity_id=id, details={"reason": reason}, ip_address=_ip(request))
+        await notify(
+            db, doc.uploaderId, "REJECTED", "Dokumen ditolak", f"'{doc.title}' ditolak: {reason}"
+        )
+    await log_action(
+        db,
+        "REJECT",
+        actor_id=user["id"],
+        entity="sign_request",
+        entity_id=id,
+        details={"reason": reason},
+        ip_address=_ip(request),
+    )
     return to_sign_request_response(updated)

@@ -143,7 +143,14 @@ async function verifyToken() {
   loading.value = true
   error.value = ''
   try {
-    result.value = await verifyService.verifyByToken(token.value.trim())
+    // Terima token mentah, URL, maupun JSON QR (dinormalisasi ke sig id).
+    const sigId = extractTokenFromQrText(token.value)
+    if (!sigId) {
+      error.value = 'Token tidak dikenali. Tempel token, URL, atau isi QR.'
+      result.value = null
+      return
+    }
+    result.value = await verifyService.verifyByToken(sigId)
   } catch (e) {
     error.value = toApiMessage(e, 'Token TIDAK VALID atau gagal diverifikasi.')
     result.value = null

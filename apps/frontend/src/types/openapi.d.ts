@@ -106,6 +106,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/google": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Login/daftar via Google ID Token (rate 10/mnt/IP) */
+        post: operations["googleLogin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daftar user (Org Admin, Super Admin). Untuk memilih Signer. */
+        get: operations["listUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users/me": {
         parameters: {
             query?: never;
@@ -121,6 +155,23 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/users/me/complete-profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Lengkapi profil (onboarding Google); sekali saja */
+        patch: operations["completeProfile"];
         trace?: never;
     };
     "/keys/generate": {
@@ -201,6 +252,23 @@ export interface paths {
         };
         /** Detail dokumen (butuh auth) */
         get: operations["getDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/documents/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Unduh PDF asli / bertanda tangan (privat, butuh auth) */
+        get: operations["downloadDocument"];
         put?: never;
         post?: never;
         delete?: never;
@@ -392,10 +460,14 @@ export interface components {
             /** Format: password */
             password: string;
             organization: string;
+            /** @description Opsional saat register; format internasional, dinormalisasi */
+            phone?: string;
             /** @enum {string} */
             role: "ORG_ADMIN" | "SIGNER";
             /** @description Tujuan penggunaan; dicatat di audit log, bukan kolom user */
             purpose: string;
+            /** @description Token Turnstile; wajib bila CAPTCHA diaktifkan */
+            captchaToken?: string;
         };
         VerifyEmailRequest: {
             /** Format: email */
@@ -405,12 +477,16 @@ export interface components {
         ResendVerificationRequest: {
             /** Format: email */
             email: string;
+            /** @description Token Turnstile; diverifikasi bila CAPTCHA diaktifkan */
+            captchaToken?: string;
         };
         LoginRequest: {
             /** Format: email */
             email: string;
             /** Format: password */
             password: string;
+            /** @description Opsional; bila diisi akan diverifikasi */
+            captchaToken?: string;
         };
         RefreshRequest: {
             refreshToken: string;
@@ -425,6 +501,11 @@ export interface components {
             organization: string;
             role: components["schemas"]["Role"];
             emailVerified: boolean;
+            phone?: string | null;
+            /** @enum {string} */
+            authProvider: "EMAIL" | "GOOGLE";
+            profileCompleted: boolean;
+            avatarUrl?: string | null;
             /** Format: date-time */
             createdAt: string;
         };
@@ -437,6 +518,26 @@ export interface components {
         LoginResponse: {
             user: components["schemas"]["User"];
             tokens: components["schemas"]["AuthTokens"];
+        };
+        GoogleLoginRequest: {
+            /** @description Google ID Token dari GIS button */
+            idToken: string;
+        };
+        CompleteProfileRequest: {
+            fullName: string;
+            organization: string;
+            /** @description Wajib saat onboarding; dinormalisasi */
+            phone: string;
+            /** @enum {string} */
+            role: "ORG_ADMIN" | "SIGNER";
+            /** @description Dicatat di audit log, bukan kolom user */
+            purpose: string;
+        };
+        GoogleLoginResponse: {
+            user: components["schemas"]["User"];
+            tokens: components["schemas"]["AuthTokens"];
+            /** @description False = FE wajib arahkan ke /onboarding */
+            profileCompleted: boolean;
         };
         GenerateKeyRequest: {
             algorithm: components["schemas"]["KeyAlgorithm"];
@@ -592,6 +693,12 @@ export interface components {
             limit: number;
             total: number;
         };
+        UserPage: {
+            data: components["schemas"]["User"][];
+            page: number;
+            limit: number;
+            total: number;
+        };
     };
     responses: {
         /** @description Request tidak valid */
@@ -614,6 +721,42 @@ export interface components {
         };
         /** @description Role tidak diizinkan */
         Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorBody"];
+            };
+        };
+        /** @description Validasi request gagal (tipe/format field salah) */
+        ValidationError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorBody"];
+            };
+        };
+        /** @description Melebihi batas request per menit */
+        RateLimited: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorBody"];
+            };
+        };
+        /** @description Layanan hulu (Google) gagal dijangkau */
+        BadGateway: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorBody"];
+            };
+        };
+        /** @description Fitur belum dikonfigurasi di server */
+        ServiceUnavailable: {
             headers: {
                 [name: string]: unknown;
             };
@@ -675,6 +818,7 @@ export interface operations {
             };
             400: components["responses"]["BadRequest"];
             409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
         };
     };
     verifyEmail: {
@@ -700,6 +844,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            422: components["responses"]["ValidationError"];
         };
     };
     resendVerification: {
@@ -724,6 +869,7 @@ export interface operations {
                     "application/json": components["schemas"]["MessageResponse"];
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     login: {
@@ -758,6 +904,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
             };
+            422: components["responses"]["ValidationError"];
         };
     };
     refresh: {
@@ -783,6 +930,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationError"];
         };
     };
     logout: {
@@ -808,6 +956,64 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    googleLogin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoogleLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Sukses; profileCompleted=false berarti FE wajib ke /onboarding */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoogleLoginResponse"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationError"];
+            429: components["responses"]["RateLimited"];
+            502: components["responses"]["BadGateway"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listUsers: {
+        parameters: {
+            query?: {
+                page?: components["parameters"]["PageParam"];
+                limit?: components["parameters"]["LimitParam"];
+                role?: components["schemas"]["Role"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daftar user (tanpa hash/token) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getMe: {
@@ -829,6 +1035,33 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    completeProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Profil lengkap */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
         };
     };
     generateKey: {
@@ -856,6 +1089,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationError"];
         };
     };
     listKeys: {
@@ -958,6 +1192,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationError"];
         };
     };
     getDocument: {
@@ -980,6 +1215,33 @@ export interface operations {
                     "application/json": components["schemas"]["Document"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    downloadDocument: {
+        parameters: {
+            query?: {
+                kind?: "original" | "signed";
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File PDF (Content-Disposition inline) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
         };
@@ -1012,6 +1274,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     listPendingSignRequests: {
@@ -1068,6 +1331,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
         };
     };
     batchApproveSignRequests: {
@@ -1095,6 +1359,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            422: components["responses"]["ValidationError"];
         };
     };
     rejectSignRequest: {
@@ -1125,6 +1390,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationError"];
         };
     };
     verifyBySigId: {
@@ -1175,6 +1441,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            422: components["responses"]["ValidationError"];
         };
     };
     listAuditLogs: {

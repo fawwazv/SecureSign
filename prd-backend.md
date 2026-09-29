@@ -16,6 +16,11 @@ Membangun API FastAPI, integrasi Supabase + Prisma, kriptografi, PDF/QR, email, 
 
 - Setup FastAPI + Prisma + Supabase.
 - Implementasi JWT (access + refresh), Argon2id, RBAC middleware.
+- Implementasi Google OAuth (verifikasi ID Token via JWKS, auto-link by email) + onboarding profil.
+- Implementasi PAdES via pyHanko: sertifikat self-signed per key, digest SHA-256
+  atas ByteRange, CMS RSA-PSS, appearance visual, fallback detached legacy
+  (Ed25519 / tanpa sertifikat).
+- Implementasi CAPTCHA Turnstile (register/resend wajib, login opsional) + rate-limit per-path auth.
 - Implementasi kriptografi: RSA-2048 PSS, ECDSA P-256, Ed25519, AES-256-GCM, SHA-256.
 - Implementasi endpoint sesuai `openapi.yaml`.
 - Implementasi PDF service: hash, embed QR, ekstrak QR.
@@ -25,9 +30,8 @@ Membangun API FastAPI, integrasi Supabase + Prisma, kriptografi, PDF/QR, email, 
 - Implementasi audit service.
 - Implementasi batch signing (transaksi + optimistic locking).
 - Implementasi verifikasi publik.
-- Testing: unit, integration, performance 30x, tamper, wrong key, fake QR.
+- Testing: unit, integration, performance 30x, tamper, wrong key, fake QR, OAuth, CAPTCHA, onboarding.
 - Dokumentasi API (`openapi.yaml`).
-- CI/CD backend.
 
 ---
 
@@ -49,6 +53,8 @@ Membangun API FastAPI, integrasi Supabase + Prisma, kriptografi, PDF/QR, email, 
 | POST | `/api/v1/auth/login` | Public |
 | POST | `/api/v1/auth/refresh` | Public |
 | POST | `/api/v1/auth/logout` | Auth |
+| POST | `/api/v1/auth/google` | Public |
+| PATCH | `/api/v1/users/me/complete-profile` | Auth |
 | GET | `/api/v1/users/me` | Auth |
 | POST | `/api/v1/keys/generate` | Signer |
 | GET | `/api/v1/keys` | Signer |
@@ -92,6 +98,11 @@ Gunakan `packages/database/schema.prisma` sesuai PRD utama.
 - Tamper: ubah 1 byte PDF → gagal.
 - Wrong key: public key salah → gagal.
 - Fake QR: QR palsu/dimodifikasi → gagal.
+- PAdES: ByteRange utuh + CMS RSA-PSS valid + sertifikat ter-pin ke DB;
+  tamper 1 byte → INVALID; kunci salah → INVALID; Ed25519 tetap jalur legacy.
+- OAuth: token palsu/kedaluwarsa/aud salah → 401, sub beda → 401, akun Google login via password → 400, auto-link EMAIL→GOOGLE sukses.
+- CAPTCHA: tanpa token saat aktif → 400, bypass saat nonaktif/ENV=test.
+- Onboarding: PATCH sukses → flag true, PATCH kedua → 409.
 - Unit test coverage ≥ 80%.
 
 ---
@@ -117,6 +128,15 @@ SMTP_HOST=...
 SMTP_PORT=587
 SMTP_USER=...
 SMTP_PASS=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_ALLOWED_HD=
+CAPTCHA_PROVIDER=turnstile
+CAPTCHA_SECRET_KEY=
+CAPTCHA_SITE_KEY=
+CAPTCHA_ENABLED=false
+AUTH_GOOGLE_RATE_PER_MIN=10
+AUTH_REGISTER_RATE_PER_MIN=10
 SENTRY_DSN=...
 ENV=development
 API_BASE_URL=http://localhost:8000
@@ -127,9 +147,11 @@ FRONTEND_URL=http://localhost:5173
 
 ## 9. CI/CD
 
-- GitHub Actions: lint (`ruff`, `black`), test (`pytest`), build.
-- Deploy ke staging setelah merge ke `develop`, dijalankan langsung sebagai proses Python (Uvicorn) di server/VM.
-- **Tidak menggunakan Docker/containerization** — build & deploy bersifat native.
+> **Dihapus** — CI/CD tidak dipakai sesuai perubahan PRD. Penjamin kualitas:
+> verifikasi manual lokal (`ruff`, `black`, `pytest` per-file, `scripts/smoke.py`).
+> Deploy staging ikut panduan `docs/deployment/staging.md`, dijalankan langsung
+> sebagai proses Python (Uvicorn) di server/VM.
+> **Tidak menggunakan Docker/containerization** — build & deploy bersifat native.
 
 ---
 

@@ -12,9 +12,9 @@ from typing import Any
 
 
 def canonicalize(metadata: dict[str, Any]) -> bytes:
-    return json.dumps(
-        metadata, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    return json.dumps(metadata, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def canonicalize_str(metadata: dict[str, Any]) -> str:

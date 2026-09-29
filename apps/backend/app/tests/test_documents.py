@@ -17,6 +17,22 @@ from app.main import create_app
 FAKE_PDF = b"%PDF-1.4\n%fake untuk test\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"
 
 
+def _real_pdf_bytes() -> bytes:
+    import io as _io
+
+    from reportlab.pdfgen import canvas
+
+    buf = _io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(595, 842))
+    c.setFont("Helvetica", 12)
+    c.drawString(72, 800, "Dokumen test")
+    c.save()
+    return buf.getvalue()
+
+
+REAL_PDF = _real_pdf_bytes()
+
+
 @pytest.fixture(scope="module")
 def client() -> TestClient:
     reset_rate_limiter()
@@ -81,16 +97,25 @@ def users(client: TestClient) -> dict:
     signer = f"d+{uuid.uuid4().hex[:10]}@example.com"
     _make_user(org, "ORG_ADMIN")
     _make_user(signer, "SIGNER")
-    data = {"org": org, "signer": signer,
-            "t_org": _login(client, org), "t_signer": _login(client, signer)}
+    data = {
+        "org": org,
+        "signer": signer,
+        "t_org": _login(client, org),
+        "t_signer": _login(client, signer),
+    }
     yield data
     _cleanup_user(org)
     _cleanup_user(signer)
 
 
-def _upload(client: TestClient, token: str, title: str = "Kontrak K-1",
-            content: bytes = FAKE_PDF, filename: str = "kontrak.pdf",
-            metadata: str = '{"no": "K-1"}') -> dict:
+def _upload(
+    client: TestClient,
+    token: str,
+    title: str = "Kontrak K-1",
+    content: bytes = REAL_PDF,
+    filename: str = "kontrak.pdf",
+    metadata: str = '{"no": "K-1"}',
+) -> dict:
     files = {"file": (filename, io.BytesIO(content), "application/pdf")}
     res = client.post(
         "/api/v1/documents",
@@ -112,8 +137,33 @@ def test_upload_dan_validasi(client: TestClient, users: dict) -> None:
     bukan_pdf = _upload(client, users["t_org"], filename="a.txt", content=b"hello")
     assert bukan_pdf.status_code == 400
 
+    # PDF rusak (magic OK, isi tak terparse) ditolak saat upload, bukan saat approve.
+    junk = _upload(client, users["t_org"], content=b"%PDF-1.4\nsampah" + b"x" * 100)
+    assert junk.status_code == 400
+    assert junk.json()["error"]["code"] == "INVALID_PDF"
+
     meta_salah = _upload(client, users["t_org"], metadata="bukan-json")
     assert meta_salah.status_code == 400
+
+    # Metadata terstruktur ala form: valid disimpan, invalid ditolak.
+    structured = _upload(
+        client,
+        users["t_org"],
+        title="Surat Tugas",
+        metadata='{"nomor": "001/IX/2026", "tanggal": "2026-09-29", "jenis": "Surat Tugas", "pengirim": "FTI"}',
+    )
+    assert structured.status_code == 201, structured.text
+    assert structured.json()["metadata"] == {
+        "nomor": "001/IX/2026",
+        "tanggal": "2026-09-29",
+        "jenis": "Surat Tugas",
+        "pengirim": "FTI",
+    }
+    assert _upload(client, users["t_org"], metadata='{"tanggal": "29-09-2026"}').status_code == 400
+    assert _upload(client, users["t_org"], metadata='{"jenis": "Alien"}').status_code == 400
+    assert (
+        _upload(client, users["t_org"], metadata='{"nomor": "' + "x" * 51 + '"}').status_code == 400
+    )
 
     # Signer tidak boleh upload.
     forbidden = _upload(client, users["t_signer"])
@@ -124,27 +174,32 @@ def test_list_pagination_dan_filter(client: TestClient, users: dict) -> None:
     for i in range(3):
         r = _upload(client, users["t_org"], title=f"Dok-{i}")
         assert r.status_code == 201, r.text
-    page1 = client.get("/api/v1/documents?page=1&limit=2",
-                       headers={"Authorization": f"Bearer {users['t_org']}"})
+    page1 = client.get(
+        "/api/v1/documents?page=1&limit=2", headers={"Authorization": f"Bearer {users['t_org']}"}
+    )
     assert page1.status_code == 200
     b1 = page1.json()
     assert (b1["page"], b1["limit"]) == (1, 2) and len(b1["data"]) == 2 and b1["total"] >= 3
-    filt = client.get("/api/v1/documents?status=DRAFT",
-                      headers={"Authorization": f"Bearer {users['t_org']}"})
+    filt = client.get(
+        "/api/v1/documents?status=DRAFT", headers={"Authorization": f"Bearer {users['t_org']}"}
+    )
     assert filt.status_code == 200 and all(d["status"] == "DRAFT" for d in filt.json()["data"])
-    bad = client.get("/api/v1/documents?status=ANEH",
-                     headers={"Authorization": f"Bearer {users['t_org']}"})
+    bad = client.get(
+        "/api/v1/documents?status=ANEH", headers={"Authorization": f"Bearer {users['t_org']}"}
+    )
     assert bad.status_code == 400
 
 
 def test_detail_akses(client: TestClient, users: dict) -> None:
     doc_id = _upload(client, users["t_org"]).json()["id"]
-    me = client.get(f"/api/v1/documents/{doc_id}",
-                    headers={"Authorization": f"Bearer {users['t_org']}"})
+    me = client.get(
+        f"/api/v1/documents/{doc_id}", headers={"Authorization": f"Bearer {users['t_org']}"}
+    )
     assert me.status_code == 200
     # Signer lain tanpa request -> 404 (tidak bocor).
-    other = client.get(f"/api/v1/documents/{doc_id}",
-                       headers={"Authorization": f"Bearer {users['t_signer']}"})
+    other = client.get(
+        f"/api/v1/documents/{doc_id}", headers={"Authorization": f"Bearer {users['t_signer']}"}
+    )
     assert other.status_code == 404
     assert client.get(f"/api/v1/documents/{doc_id}").status_code == 401
 
@@ -165,38 +220,130 @@ def test_request_sign_pending_notifikasi(client: TestClient, users: dict) -> Non
     sid = asyncio.new_event_loop().run_until_complete(_signer_id())
 
     # Signer id asal -> 400.
-    bad = client.post(f"/api/v1/documents/{doc_id}/request-sign",
-                      json={"signerId": "tidak-ada"},
-                      headers={"Authorization": f"Bearer {users['t_org']}"})
+    bad = client.post(
+        f"/api/v1/documents/{doc_id}/request-sign",
+        json={"signerId": "tidak-ada"},
+        headers={"Authorization": f"Bearer {users['t_org']}"},
+    )
     assert bad.status_code == 400
 
-    req = client.post(f"/api/v1/documents/{doc_id}/request-sign",
-                      json={"signerId": sid, "message": "Mohon tanda tangan"},
-                      headers={"Authorization": f"Bearer {users['t_org']}"})
+    req = client.post(
+        f"/api/v1/documents/{doc_id}/request-sign",
+        json={"signerId": sid, "message": "Mohon tanda tangan"},
+        headers={"Authorization": f"Bearer {users['t_org']}"},
+    )
     assert req.status_code == 201, req.text
     assert req.json()["status"] == "PENDING"
 
     # Duplikat -> 409.
-    dup = client.post(f"/api/v1/documents/{doc_id}/request-sign",
-                      json={"signerId": sid},
-                      headers={"Authorization": f"Bearer {users['t_org']}"})
+    dup = client.post(
+        f"/api/v1/documents/{doc_id}/request-sign",
+        json={"signerId": sid},
+        headers={"Authorization": f"Bearer {users['t_org']}"},
+    )
     assert dup.status_code == 409
 
     # Dokumen berubah PENDING.
-    det = client.get(f"/api/v1/documents/{doc_id}",
-                     headers={"Authorization": f"Bearer {users['t_org']}"})
+    det = client.get(
+        f"/api/v1/documents/{doc_id}", headers={"Authorization": f"Bearer {users['t_org']}"}
+    )
     assert det.json()["status"] == "PENDING"
 
     # Signer melihat pending + dapat notifikasi.
-    pend = client.get("/api/v1/sign-requests/pending",
-                      headers={"Authorization": f"Bearer {users['t_signer']}"})
+    pend = client.get(
+        "/api/v1/sign-requests/pending", headers={"Authorization": f"Bearer {users['t_signer']}"}
+    )
     assert pend.status_code == 200 and pend.json()["total"] >= 1
-    notif = client.get("/api/v1/notifications",
-                       headers={"Authorization": f"Bearer {users['t_signer']}"})
+    notif = client.get(
+        "/api/v1/notifications", headers={"Authorization": f"Bearer {users['t_signer']}"}
+    )
     assert notif.status_code == 200
     items = notif.json()["data"]
     assert any(n["type"] == "SIGN_REQUEST" for n in items)
 
     # Org Admin tidak boleh buka pending signer.
-    assert client.get("/api/v1/sign-requests/pending",
-                      headers={"Authorization": f"Bearer {users['t_org']}"}).status_code == 403
+    assert (
+        client.get(
+            "/api/v1/sign-requests/pending", headers={"Authorization": f"Bearer {users['t_org']}"}
+        ).status_code
+        == 403
+    )
+
+
+def test_superadmin_global_bisa_akses_dokumen_dan_pending(client: TestClient) -> None:
+    """Regresi mismatch FE/BE: guard FE membolehkan SUPER_ADMIN, BE wajib ikut."""
+    reset_rate_limiter()
+    email = f"sa+{uuid.uuid4().hex[:10]}@example.com"
+    _make_user(email, "SUPER_ADMIN")
+    try:
+        token = _login(client, email)
+        headers = {"Authorization": f"Bearer {token}"}
+        assert client.get("/api/v1/documents", headers=headers).status_code == 200
+        assert client.get("/api/v1/sign-requests/pending", headers=headers).status_code == 200
+        assert (
+            client.post(
+                "/api/v1/keys/generate", json={"algorithm": "ED25519"}, headers=headers
+            ).status_code
+            == 201
+        )
+    finally:
+        _cleanup_user(email)
+
+
+def test_download_original_signed_dan_guard(client: TestClient, users: dict) -> None:
+    doc_id = _upload(client, users["t_org"], title="Unduh1").json()["id"]
+    h_org = {"Authorization": f"Bearer {users['t_org']}"}
+    h_sign = {"Authorization": f"Bearer {users['t_signer']}"}
+
+    ori = client.get(f"/api/v1/documents/{doc_id}/download", headers=h_org)
+    assert ori.status_code == 200, ori.text
+    assert ori.headers["content-type"] == "application/pdf"
+    assert ori.content.startswith(b"%PDF")
+
+    # kind salah -> 400; signed belum ada -> 404.
+    assert (
+        client.get(f"/api/v1/documents/{doc_id}/download?kind=aneh", headers=h_org).status_code
+        == 400
+    )
+    assert (
+        client.get(f"/api/v1/documents/{doc_id}/download?kind=signed", headers=h_org).status_code
+        == 404
+    )
+
+    # Signer asing + anonim ditolak (404 agar tidak bocor).
+    assert client.get(f"/api/v1/documents/{doc_id}/download", headers=h_sign).status_code == 404
+    assert client.get(f"/api/v1/documents/{doc_id}/download").status_code == 401
+
+
+def test_qr_placements_simpan_validasi(client: TestClient, users: dict) -> None:
+    doc_id = _upload(client, users["t_org"], title="QRPlace1").json()["id"]
+    h_org = {"Authorization": f"Bearer {users['t_org']}"}
+    h_sign = {"Authorization": f"Bearer {users['t_signer']}"}
+
+    det = client.get(f"/api/v1/documents/{doc_id}", headers=h_org).json()
+    assert det["pageCount"] >= 1 and det["qrPlacements"] == []
+
+    ok = client.put(
+        f"/api/v1/documents/{doc_id}/qr-placements",
+        json={"placements": [{"page": 1, "x": 0.7, "y": 0.8, "size": 0.15}]},
+        headers=h_org,
+    )
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["qrPlacements"] == [{"page": 1, "x": 0.7, "y": 0.8, "size": 0.15}]
+
+    bad = client.put(
+        f"/api/v1/documents/{doc_id}/qr-placements",
+        json={"placements": [{"page": 99, "x": 2, "y": -1, "size": 0.001}]},
+        headers=h_org,
+    )
+    assert bad.status_code == 400
+
+    # Signer tidak boleh atur.
+    assert (
+        client.put(
+            f"/api/v1/documents/{doc_id}/qr-placements",
+            json={"placements": []},
+            headers=h_sign,
+        ).status_code
+        == 403
+    )

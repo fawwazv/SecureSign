@@ -12,11 +12,17 @@ from fastapi.testclient import TestClient
 from prisma import Prisma
 
 from app.core.rate_limit import reset_rate_limiter
+from app.core.security import hash_password
 from app.crypto import ecdsa, ed25519, rsa
 from app.crypto.canonical import canonicalize, signed_message
 from app.crypto.hashing import sha256_hex
-from app.crypto.key_manager import decrypt_private, encrypt_private, generate_keypair, sign_with, verify_with
-from app.core.security import hash_password
+from app.crypto.key_manager import (
+    decrypt_private,
+    encrypt_private,
+    generate_keypair,
+    sign_with,
+    verify_with,
+)
 from app.main import create_app
 
 MESSAGE = b"dokumen-contoh"
@@ -32,6 +38,7 @@ def client() -> TestClient:
 
 
 # ---------- unit: roundtrip ----------
+
 
 def test_rsa_roundtrip_dan_tamper_dan_wrong_key() -> None:
     priv, pub = rsa.generate()
@@ -94,6 +101,7 @@ def test_kanonis_deterministik_dan_signed_message() -> None:
 
 # ---------- API: RBAC ----------
 
+
 def _make_verified_user(email: str, role: str) -> None:
     async def _go() -> None:
         db = Prisma()
@@ -147,37 +155,73 @@ def test_keys_api_rbac_dan_revoke(client: TestClient) -> None:
     try:
         t_signer, t_org, t_admin = (_login(client, e) for e in (signer, org, admin))
 
-        assert client.post("/api/v1/keys/generate", json={"algorithm": "ED25519"}).status_code == 401
+        assert (
+            client.post("/api/v1/keys/generate", json={"algorithm": "ED25519"}).status_code == 401
+        )
 
         # ORG_ADMIN tidak boleh generate (ikut PRD: Signer only).
         nope = client.post(
-            "/api/v1/keys/generate", json={"algorithm": "ED25519"},
+            "/api/v1/keys/generate",
+            json={"algorithm": "ED25519"},
             headers={"Authorization": f"Bearer {t_org}"},
         )
         assert nope.status_code == 403
 
         gen = client.post(
-            "/api/v1/keys/generate", json={"algorithm": "ED25519"},
+            "/api/v1/keys/generate",
+            json={"algorithm": "ED25519"},
             headers={"Authorization": f"Bearer {t_signer}"},
         )
         assert gen.status_code == 201, gen.text
         key = gen.json()
         assert key["algorithm"] == "ED25519" and key["revoked"] is False
-        assert "encryptedPrivateKey" not in str(key) and "private" not in key.get("publicKey", "").lower()
+        assert (
+            "encryptedPrivateKey" not in str(key)
+            and "private" not in key.get("publicKey", "").lower()
+        )
         key_id = key["id"]
 
         lst = client.get("/api/v1/keys", headers={"Authorization": f"Bearer {t_signer}"})
         assert lst.status_code == 200 and len(lst.json()["data"]) == 1
 
+        # RSA generate -> sertifikat self-signed tersimpan & cocok dengan public key.
+        gen_rsa = client.post(
+            "/api/v1/keys/generate",
+            json={"algorithm": "RSA_PSS_2048"},
+            headers={"Authorization": f"Bearer {t_signer}"},
+        )
+        assert gen_rsa.status_code == 201, gen_rsa.text
+        rsa_id = gen_rsa.json()["id"]
+
+        async def _cert_ok() -> bool:
+            from app.crypto.x509 import cert_matches_key
+
+            db = Prisma()
+            await db.connect()
+            try:
+                row = await db.keypair.find_unique(where={"id": rsa_id})
+                assert row and row.certificate
+                return cert_matches_key(row.certificate, row.publicKey.encode())
+            finally:
+                await db.disconnect()
+
+        assert asyncio.new_event_loop().run_until_complete(_cert_ok())
+
         # Signer tidak boleh revoke.
-        assert client.post(
-            f"/api/v1/keys/{key_id}/revoke", headers={"Authorization": f"Bearer {t_signer}"}
-        ).status_code == 403
+        assert (
+            client.post(
+                f"/api/v1/keys/{key_id}/revoke", headers={"Authorization": f"Bearer {t_signer}"}
+            ).status_code
+            == 403
+        )
 
         # Revoke key yang tidak ada -> 404.
-        assert client.post(
-            "/api/v1/keys/tidak-ada/revoke", headers={"Authorization": f"Bearer {t_admin}"}
-        ).status_code == 404
+        assert (
+            client.post(
+                "/api/v1/keys/tidak-ada/revoke", headers={"Authorization": f"Bearer {t_admin}"}
+            ).status_code
+            == 404
+        )
 
         rev = client.post(
             f"/api/v1/keys/{key_id}/revoke", headers={"Authorization": f"Bearer {t_admin}"}

@@ -38,14 +38,23 @@ enum SignRequestStatus {
   REJECTED
 }
 
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+}
+
 model User {
   id                String    @id @default(cuid())
   email             String    @unique
-  passwordHash      String    @map("password_hash")
+  passwordHash      String?   @map("password_hash") // NULL untuk user Google-only
   fullName          String    @map("full_name")
   organization      String?
   phone             String?
   role              Role      @default(SIGNER)
+  authProvider      AuthProvider @default(EMAIL) @map("auth_provider")
+  googleSub         String?   @unique @map("google_sub")
+  avatarUrl         String?   @map("avatar_url")
+  profileCompleted  Boolean   @default(false) @map("profile_completed")
   emailVerified     Boolean   @default(false) @map("email_verified")
   verificationToken String?   @map("verification_token")
   verificationExpiry DateTime? @map("verification_expiry")
@@ -71,6 +80,7 @@ model KeyPair {
   publicKey          String       @map("public_key") // PEM / base64
   encryptedPrivateKey String      @map("encrypted_private_key") // AES-256-GCM ciphertext (base64)
   privateKeyNonce    String       @map("private_key_nonce") // GCM nonce (base64)
+  certificate        String?      @map("certificate") // X.509 self-signed PEM (demo, bukan PSrE)
   revoked            Boolean      @default(false)
   revokedAt          DateTime?    @map("revoked_at")
   createdAt          DateTime     @default(now()) @map("created_at")
@@ -89,6 +99,8 @@ model Document {
   storagePath  String         @map("storage_path") // path di Supabase Storage
   fileHash     String         @map("file_hash") // SHA-256 hex dari byte PDF asli
   metadata     Json           @default("{}") // metadata kanonis (JCS) yang ikut ditandatangani
+  pageCount    Int            @default(1) @map("page_count") // jumlah halaman PDF
+  qrPlacements Json           @default("[]") // [{page, x, y, size}] fraksi 0..1, origin kiri-atas
   status       DocumentStatus @default(DRAFT)
   version      Int            @default(1) // optimistic locking untuk batch sign
   createdAt    DateTime       @default(now()) @map("created_at")
@@ -134,6 +146,9 @@ model Signature {
   canonicalMetadata String     @map("canonical_metadata") // JCS/RFC 8785
   qrPayload        String      @map("qr_payload") // link verifikasi yang di-embed ke QR
   signedPdfPath    String?     @map("signed_pdf_path") // PDF ber-QR di Storage
+  sigFormat        String      @default("LEGACY") @map("sig_format") // LEGACY atau PADES
+  byteRange        String?     @map("byte_range") // ByteRange PAdES "[a b c d]"
+  signerPosition   String?     @map("signer_position") // jabatan saat signing (snapshot)
   createdAt        DateTime    @default(now()) @map("created_at")
 
   @@map("signatures")

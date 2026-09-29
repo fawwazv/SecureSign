@@ -18,9 +18,7 @@ def get_storage_client() -> Client:
 
 def upload_file(path: str, content: bytes, content_type: str = "application/pdf") -> str:
     sb = get_storage_client()
-    sb.storage.from_(BUCKET).upload(
-        path, content, {"content-type": content_type, "upsert": "true"}
-    )
+    sb.storage.from_(BUCKET).upload(path, content, {"content-type": content_type, "upsert": "true"})
     return path
 
 
@@ -33,5 +31,5 @@ def remove_file(path: str) -> None:
     sb = get_storage_client()
     try:
         sb.storage.from_(BUCKET).remove([path])
-    except Exception:
+    except Exception:  # noqa: BLE001, S110 — hapus best-effort untuk cleanup
         pass
