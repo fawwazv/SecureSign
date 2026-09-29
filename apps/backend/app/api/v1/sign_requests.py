@@ -63,8 +63,11 @@ async def approve(
     key_pair_id = payload.get("keyPairId", "")
     if not key_pair_id:
         raise AppError("MISSING_KEY", "keyPairId wajib diisi.", status=400)
+    position = payload.get("position")
+    if position is not None and (not isinstance(position, str) or len(position.strip()) == 0):
+        raise AppError("INVALID_POSITION", "position harus teks tidak kosong.", status=400)
     async with db.tx(timeout=30000) as tx:
-        sig = await approve_one(tx, id, user["id"], key_pair_id, _ip(request))
+        sig = await approve_one(tx, id, user["id"], key_pair_id, _ip(request), position)
     return to_signature_response(sig)
 
 
@@ -82,9 +85,10 @@ async def batch_approve(
     for item in items:
         sr_id = item.get("signRequestId", "")
         key_id = item.get("keyPairId", "")
+        position = item.get("position")
         try:
             async with db.tx(timeout=30000) as tx:
-                sig = await approve_one(tx, sr_id, user["id"], key_id, _ip(request))
+                sig = await approve_one(tx, sr_id, user["id"], key_id, _ip(request), position)
             results.append(
                 {"signRequestId": sr_id, "success": True, "signatureId": sig.id, "error": None}
             )

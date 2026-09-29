@@ -189,7 +189,10 @@ def test_single_approve_end_to_end(client: TestClient, env: dict) -> None:
     assert res.status_code == 201, res.text
     sig = res.json()
     assert sig["id"].startswith("sv_") and sig["documentId"] == doc_id
-    assert sig["qrPayload"].endswith(f"/verify/{sig['id']}")
+    from app.services.qr_service import parse_qr_payload
+
+    qr = parse_qr_payload(sig["qrPayload"])
+    assert qr["sig"] == sig["id"] and qr["url"].endswith(f"/verify/{sig['id']}")
     assert sig["signedPdfPath"] == f"signed/{sig['id']}.pdf"
     print(f"\nsingle-approve: {elapsed:.1f}s")
     assert elapsed < 15
@@ -322,3 +325,23 @@ def test_approve_rsa_mencatat_pades(client: TestClient, env: dict) -> None:
     body = res.json()
     assert body["sigFormat"] == "PADES"
     assert body["byteRange"] and len(body["byteRange"].split()) == 4
+
+
+def test_approve_dengan_jabatan_tersimpan_dan_qr_kaya(client: TestClient, env: dict) -> None:
+    """Approve + position -> signerPosition tersimpan + qrPayload JSON terparse."""
+    from app.services.qr_service import parse_qr_payload
+
+    doc_id = _upload(client, env["t_org"], "Jabatan1")
+    sr_id = _request_sign(client, env, doc_id)
+    res = client.post(
+        f"/api/v1/sign-requests/{sr_id}/approve",
+        json={"keyPairId": env["key_id"], "position": "Direktur Keuangan"},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["signerPosition"] == "Direktur Keuangan"
+    data = parse_qr_payload(body["qrPayload"])
+    assert data["pos"] == "Direktur Keuangan"
+    assert data["doc"] == doc_id and data["sig"] == body["id"]
+    assert data["alg"] == "ED25519"

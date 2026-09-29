@@ -20,7 +20,7 @@ from app.crypto.key_manager import decrypt_private, sign_with
 from app.services.audit_service import log_action
 from app.services.notification_service import notify
 from app.services.pdf_service import embed_qr, embed_qrs
-from app.services.qr_service import make_qr_png, verify_url
+from app.services.qr_service import build_qr_payload, make_qr_png
 from app.services.storage_service import download_file, upload_file
 
 
@@ -41,8 +41,10 @@ async def approve_one(
     signer_id: str,
     key_pair_id: str,
     ip: str | None,
+    position: str | None = None,
 ) -> Any:
-    """Setujui + tandatangani. Return row Signature. Raise AppError bila gagal."""
+    """Setujui + tandatangani. `position` = jabatan saat signing (opsional).
+    Return row Signature. Raise AppError bila gagal."""
     sr = await db.signrequest.find_unique(where={"id": sign_request_id})
     if sr is None or sr.signerId != signer_id:
         raise AppError("NOT_FOUND", "Sign request tidak ditemukan.", status=404)
@@ -77,7 +79,22 @@ async def approve_one(
         raise AppError("SIGN_FAILED", "Gagal menandatangani.", status=500) from exc
 
     sig_id = new_sig_id()
-    qr_payload = verify_url(sig_id)
+    signer_user = await db.user.find_unique(where={"id": signer_id})
+    signer_name = signer_user.fullName if signer_user else signer_id
+    signer_org = (signer_user.organization or "") if signer_user else ""
+    position = (position or "").strip()[:100] or None
+    try:
+        qr_payload = build_qr_payload(
+            document_id=doc.id,
+            sig_id=sig_id,
+            signer_name=signer_name,
+            signer_position=position,
+            signer_org=signer_org,
+            signed_at=_now_iso(),
+            algorithm=str(key.algorithm),
+        )
+    except ValueError as exc:
+        raise AppError("QR_PAYLOAD_INVALID", str(exc), status=400) from exc
     qr_png = make_qr_png(qr_payload)
     placements = doc.qrPlacements if isinstance(doc.qrPlacements, list) else []
     if placements:
@@ -105,8 +122,6 @@ async def approve_one(
         try:
             from app.services.pades import sign_pdf_pades
 
-            signer_user = await db.user.find_unique(where={"id": signer_id})
-            signer_name = signer_user.fullName if signer_user else signer_id
             first = placements[0] if placements else {}
             box = (
                 int(first.get("page", 1)) if isinstance(first, dict) else 1,
@@ -121,6 +136,7 @@ async def approve_one(
                 box_frac=box,
                 appearance_lines=[
                     f"Ditandatangani: {signer_name}",
+                    f"Jabatan: {position}" if position else "Jabatan: -",
                     f"Waktu: {_now_iso()}",
                     f"ID: {sig_id}",
                 ],
@@ -164,6 +180,7 @@ async def approve_one(
             "signedPdfPath": signed_path,
             "sigFormat": sig_format,
             "byteRange": byte_range or None,
+            "signerPosition": position,
         }
     )
     await db.signrequest.update(where={"id": sr.id}, data={"status": "APPROVED"})

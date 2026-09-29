@@ -148,6 +148,7 @@ model Signature {
   signedPdfPath    String?     @map("signed_pdf_path") // PDF ber-QR di Storage
   sigFormat        String      @default("LEGACY") @map("sig_format") // LEGACY atau PADES
   byteRange        String?     @map("byte_range") // ByteRange PAdES "[a b c d]"
+  signerPosition   String?     @map("signer_position") // jabatan saat signing (snapshot)
   createdAt        DateTime    @default(now()) @map("created_at")
 
   @@map("signatures")

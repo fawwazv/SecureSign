@@ -18,6 +18,7 @@ class SignatureResponse(BaseModel):
     signed_pdf_path: str | None = Field(default=None, alias="signedPdfPath")
     sig_format: str = Field(default="LEGACY", alias="sigFormat")
     byte_range: str | None = Field(default=None, alias="byteRange")
+    signer_position: str | None = Field(default=None, alias="signerPosition")
     created_at: str = Field(alias="createdAt")
 
 
@@ -35,5 +36,6 @@ def to_signature_response(sig: object) -> dict:
         signedPdfPath=sig.signedPdfPath,  # type: ignore[attr-defined]
         sigFormat=str(getattr(sig, "sigFormat", "LEGACY")),
         byteRange=getattr(sig, "byteRange", None),
+        signerPosition=getattr(sig, "signerPosition", None),
         createdAt=str(sig.createdAt),  # type: ignore[attr-defined]
     ).model_dump(by_alias=True, mode="json")
