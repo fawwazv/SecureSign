@@ -16,6 +16,8 @@ class SignatureResponse(BaseModel):
     canonical_metadata: str = Field(alias="canonicalMetadata")
     qr_payload: str = Field(alias="qrPayload")
     signed_pdf_path: str | None = Field(default=None, alias="signedPdfPath")
+    sig_format: str = Field(default="LEGACY", alias="sigFormat")
+    byte_range: str | None = Field(default=None, alias="byteRange")
     created_at: str = Field(alias="createdAt")
 
 
@@ -31,5 +33,7 @@ def to_signature_response(sig: object) -> dict:
         canonicalMetadata=sig.canonicalMetadata,  # type: ignore[attr-defined]
         qrPayload=sig.qrPayload,  # type: ignore[attr-defined]
         signedPdfPath=sig.signedPdfPath,  # type: ignore[attr-defined]
+        sigFormat=str(getattr(sig, "sigFormat", "LEGACY")),
+        byteRange=getattr(sig, "byteRange", None),
         createdAt=str(sig.createdAt),  # type: ignore[attr-defined]
     ).model_dump(by_alias=True, mode="json")

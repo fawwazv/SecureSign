@@ -368,3 +368,52 @@ def test_perf_api_verify(client: TestClient, env: dict) -> None:
         avg = (time.monotonic() - start) / 3
         print(f"\n{label}: avg {avg:.2f}s")
         assert avg < 15
+
+
+def test_verify_pades_rsa_valid_dan_format(client: TestClient, env: dict) -> None:
+    """End-to-end PAdES: approve RSA -> GET verify VALID + format tercatat."""
+    key = client.post(
+        "/api/v1/keys/generate",
+        json={"algorithm": "RSA_PSS_2048"},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
+    assert key.status_code == 201, key.text
+    rsa_key_id = key.json()["id"]
+
+    pdf = _real_pdf_bytes("PadesE2E")
+    up = client.post(
+        "/api/v1/documents",
+        files={"file": ("p.pdf", io.BytesIO(pdf), "application/pdf")},
+        data={"title": "PadesE2E", "metadata": "{}"},
+        headers={"Authorization": f"Bearer {env['t_org']}"},
+    )
+    assert up.status_code == 201, up.text
+
+    async def _sid() -> str:
+        db = Prisma()
+        await db.connect()
+        try:
+            u = await db.user.find_unique(where={"email": env["signer"]})
+            assert u
+            return u.id
+        finally:
+            await db.disconnect()
+
+    req = client.post(
+        f"/api/v1/documents/{up.json()['id']}/request-sign",
+        json={"signerId": _db_run(_sid())},
+        headers={"Authorization": f"Bearer {env['t_org']}"},
+    )
+    assert req.status_code == 201, req.text
+    ap = client.post(
+        f"/api/v1/sign-requests/{req.json()['id']}/approve",
+        json={"keyPairId": rsa_key_id},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
+    assert ap.status_code == 201, ap.text
+    assert ap.json()["sigFormat"] == "PADES"
+    assert ap.json()["byteRange"]
+
+    res = client.get(f"/api/v1/verify/{ap.json()['id']}")
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "VALID"

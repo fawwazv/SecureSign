@@ -8,22 +8,31 @@ per item) -> notifikasi Org Admin.
 from __future__ import annotations
 
 import base64
+import logging
 import secrets
+from datetime import UTC, datetime
 from typing import Any
 
 from app.core.exceptions import AppError
 from app.crypto.canonical import canonicalize_str, signed_message
 from app.crypto.hashing import sha256_hex
-from app.crypto.key_manager import sign_with
+from app.crypto.key_manager import decrypt_private, sign_with
 from app.services.audit_service import log_action
 from app.services.notification_service import notify
-from app.services.pdf_service import embed_qr
+from app.services.pdf_service import embed_qr, embed_qrs
 from app.services.qr_service import make_qr_png, verify_url
 from app.services.storage_service import download_file, upload_file
 
 
 def new_sig_id() -> str:
     return "sv_" + secrets.token_urlsafe(16)
+
+
+log = logging.getLogger("signvault.signing")
+
+
+def _now_iso() -> str:
+    return datetime.now(UTC).isoformat()
 
 
 async def approve_one(
@@ -69,7 +78,63 @@ async def approve_one(
 
     sig_id = new_sig_id()
     qr_payload = verify_url(sig_id)
-    signed_pdf = embed_qr(original, make_qr_png(qr_payload), sig_id)
+    qr_png = make_qr_png(qr_payload)
+    placements = doc.qrPlacements if isinstance(doc.qrPlacements, list) else []
+    if placements:
+        stamps = [
+            (
+                qr_png,
+                int(p.get("page", 1)),
+                float(p.get("x", 0.8)),
+                float(p.get("y", 0.8)),
+                float(p.get("size", 0.15)),
+            )
+            for p in placements
+            if isinstance(p, dict)
+        ]
+        qr_base = embed_qrs(original, stamps) if stamps else embed_qr(original, qr_png, sig_id)
+    else:
+        qr_base = embed_qr(original, qr_png, sig_id)
+
+    # Jalur PAdES: RSA/ECDSA + sertifikat -> ByteRange + appearance di box pertama.
+    # Ed25519 / tanpa sertifikat -> legacy detached.
+    sig_format = "LEGACY"
+    byte_range = ""
+    signature_value = base64.b64encode(signature).decode()
+    if str(key.algorithm) in ("RSA_PSS_2048", "ECDSA_P256") and key.certificate:
+        try:
+            from app.services.pades import sign_pdf_pades
+
+            signer_user = await db.user.find_unique(where={"id": signer_id})
+            signer_name = signer_user.fullName if signer_user else signer_id
+            first = placements[0] if placements else {}
+            box = (
+                int(first.get("page", 1)) if isinstance(first, dict) else 1,
+                float(first.get("x", 0.68)) if isinstance(first, dict) else 0.68,
+                float(first.get("y", 0.78)) if isinstance(first, dict) else 0.78,
+                float(first.get("size", 0.15)) if isinstance(first, dict) else 0.15,
+            )
+            signed_pdf, byte_range, cms_b64 = await sign_pdf_pades(
+                qr_base,
+                private_pem=decrypt_private(key.encryptedPrivateKey, key.privateKeyNonce),
+                cert_pem=key.certificate,
+                box_frac=box,
+                appearance_lines=[
+                    f"Ditandatangani: {signer_name}",
+                    f"Waktu: {_now_iso()}",
+                    f"ID: {sig_id}",
+                ],
+            )
+            sig_format = "PADES"
+            if cms_b64:
+                signature_value = cms_b64
+        except AppError:
+            raise
+        except Exception as exc:
+            log.exception("PAdES gagal untuk %s", sig_id)
+            raise AppError("SIGN_FAILED", "Gagal menandatangani PAdES.", status=500) from exc
+    else:
+        signed_pdf = qr_base
     signed_path = f"signed/{sig_id}.pdf"
     try:
         upload_file(signed_path, signed_pdf)
@@ -92,11 +157,13 @@ async def approve_one(
             "keyPairId": key.id,
             "signRequestId": sr.id,
             "algorithm": str(key.algorithm),
-            "signatureValue": base64.b64encode(signature).decode(),
+            "signatureValue": signature_value,
             "signedHash": file_hash,
             "canonicalMetadata": canonical,
             "qrPayload": qr_payload,
             "signedPdfPath": signed_path,
+            "sigFormat": sig_format,
+            "byteRange": byte_range or None,
         }
     )
     await db.signrequest.update(where={"id": sr.id}, data={"status": "APPROVED"})

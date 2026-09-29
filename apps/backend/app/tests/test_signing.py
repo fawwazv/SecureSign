@@ -287,3 +287,38 @@ def test_approve_key_revoked_ditolak(client: TestClient, env: dict) -> None:
     )
     assert res.status_code == 400
     assert res.json()["error"]["code"] == "KEY_REVOKED"
+
+
+def test_embed_qrs_multi_posisi() -> None:
+    """Unit murni (tanpa DB): 2 QR posisi custom menempel, halaman tetap."""
+    from pypdf import PdfReader
+
+    from app.services.pdf_service import embed_qrs
+    from app.services.qr_service import make_qr_png
+
+    original = _real_pdf_bytes()
+    qr = make_qr_png("https://localhost:8000/api/v1/verify/sv_test")
+    out = embed_qrs(original, [(qr, 1, 0.05, 0.05, 0.25), (qr, 1, 0.7, 0.7, 0.1)])
+    assert out.startswith(b"%PDF") and len(out) > len(original)
+    assert len(PdfReader(io.BytesIO(out)).pages) == 1
+
+
+def test_approve_rsa_mencatat_pades(client: TestClient, env: dict) -> None:
+    """Approve dengan key RSA -> Signature.format PADES + byteRange terisi."""
+    doc_id = _upload(client, env["t_org"], "Pades1")
+    sr_id = _request_sign(client, env, doc_id)
+    key = client.post(
+        "/api/v1/keys/generate",
+        json={"algorithm": "RSA_PSS_2048"},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
+    assert key.status_code == 201, key.text
+    res = client.post(
+        f"/api/v1/sign-requests/{sr_id}/approve",
+        json={"keyPairId": key.json()["id"]},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["sigFormat"] == "PADES"
+    assert body["byteRange"] and len(body["byteRange"].split()) == 4

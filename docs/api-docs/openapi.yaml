@@ -203,6 +203,32 @@ paths:
           $ref: '#/components/responses/BadGateway'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+  /users:
+    get:
+      tags: [users]
+      summary: Daftar user (Org Admin, Super Admin). Untuk memilih Signer.
+      operationId: listUsers
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: role
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/Role'
+      responses:
+        '200':
+          description: Daftar user (tanpa hash/token)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /users/me:
     get:
       tags: [users]
@@ -376,6 +402,90 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+  /documents/{id}/download:
+    get:
+      tags: [documents]
+      summary: Unduh PDF asli / bertanda tangan (privat, butuh auth)
+      operationId: downloadDocument
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [original, signed]
+            default: original
+      responses:
+        '200':
+          description: File PDF (Content-Disposition inline)
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /documents/{id}/qr-placements:
+    put:
+      tags: [documents]
+      summary: Simpan posisi QR (fraksi 0..1, origin kiri-atas). Pemilik + DRAFT saja
+      operationId: saveQrPlacements
+      parameters:
+        - $ref: '#/components/parameters/IdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [placements]
+              properties:
+                placements:
+                  type: array
+                  maxItems: 10
+                  items:
+                    type: object
+                    required: [page, x, y, size]
+                    properties:
+                      page:
+                        type: integer
+                        minimum: 1
+                      x:
+                        type: number
+                        minimum: 0
+                        maximum: 1
+                      y:
+                        type: number
+                        minimum: 0
+                        maximum: 1
+                      size:
+                        type: number
+                        minimum: 0.02
+                        maximum: 0.8
+      responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '200':
+          description: Posisi tersimpan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /documents/{id}/request-sign:
     post:
       tags: [documents]
@@ -943,6 +1053,14 @@ components:
         version:
           type: integer
           description: Optimistic locking untuk batch sign
+        pageCount:
+          type: integer
+          description: Jumlah halaman PDF
+        qrPlacements:
+          type: array
+          description: Posisi QR fraksi 0..1 origin kiri-atas, dipakai saat signing
+          items:
+            type: object
         createdAt:
           type: string
           format: date-time
@@ -1058,6 +1176,14 @@ components:
         signedPdfPath:
           type: string
           nullable: true
+        sigFormat:
+          type: string
+          enum: [LEGACY, PADES]
+          description: PADES = ByteRange RSA-PSS tertanam (Adobe-verifiable)
+        byteRange:
+          type: string
+          nullable: true
+          description: ByteRange PAdES "[a b c d]"
         createdAt:
           type: string
           format: date-time
@@ -1182,6 +1308,20 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Notification'
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+    UserPage:
+      type: object
+      required: [data, page, limit, total]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
         page:
           type: integer
         limit:

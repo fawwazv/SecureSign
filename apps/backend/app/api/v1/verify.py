@@ -35,12 +35,16 @@ def _invalid(reason: str) -> dict[str, Any]:
 
 
 async def _crypto_valid(db: Prisma, sig: Any) -> tuple[bool, str]:
-    """Cek kunci aktif + signature kriptografis. Return (valid, reason)."""
+    """Cek kunci aktif + signature kriptografis. Return (valid, reason).
+    PADES: validasi ByteRange via pyHanko atas PDF final. LEGACY: verifikasi
+    detached atas hash + metadata kanonis."""
     key = await db.keypair.find_unique(where={"id": sig.keyPairId})
     if key is None:
         return False, "Kunci penandatangan tidak ditemukan."
     if key.revoked:
         return False, "Kunci penandatangan sudah di-revoke."
+    if getattr(sig, "sigFormat", "LEGACY") == "PADES":
+        return await _pades_valid(db, sig, key)
     try:
         metadata = json.loads(sig.canonicalMetadata)
         message = signed_message(sig.signedHash, metadata)
@@ -50,6 +54,22 @@ async def _crypto_valid(db: Prisma, sig: Any) -> tuple[bool, str]:
     except Exception:  # noqa: BLE001 — data korup = INVALID, bukan 500
         return False, "Signature tidak valid."
     return (True, "") if ok else (False, "Hash / signature tidak cocok (dokumen mungkin diubah).")
+
+
+async def _pades_valid(db: Prisma, sig: Any, key: Any) -> tuple[bool, str]:
+    from app.services.pades import avalidate_pades
+
+    _ = db
+    if not sig.signedPdfPath:
+        return False, "File bertanda tidak ditemukan."
+    try:
+        signed_bytes = download_file(sig.signedPdfPath)
+    except Exception:  # noqa: BLE001 — file hilang = INVALID
+        return False, "File bertanda tidak ditemukan."
+    result = await avalidate_pades(signed_bytes, key.publicKey)
+    if not result["ok"]:
+        return False, result["reason"]
+    return True, ""
 
 
 async def _audit_trail(db: Prisma, sig: Any) -> list[dict[str, Any]]:
