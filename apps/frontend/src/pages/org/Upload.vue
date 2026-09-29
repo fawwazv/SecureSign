@@ -6,10 +6,10 @@
     </div>
 
     <Alert v-if="error" variant="error" title="Upload gagal">{{ error }}</Alert>
-    <Alert v-if="success" variant="success" title="Berhasil">Dokumen terupload. Lanjut isi metadata bila perlu.</Alert>
+    <Alert v-if="success" variant="success" title="Berhasil">Dokumen terupload.</Alert>
 
     <Card>
-      <form class="flex flex-col gap-4" @submit.prevent="openMetadata">
+      <form class="flex flex-col gap-4" @submit.prevent="submit">
         <div class="flex flex-col gap-1.5">
           <label for="pdf-file" class="text-sm font-medium text-slate-800">File PDF <span class="text-[#B3261E]" aria-hidden="true">*</span></label>
           <input
@@ -25,39 +25,37 @@
           <p id="pdf-hint" class="text-xs text-slate-500">Hanya PDF, maksimal 25 MB.</p>
           <p v-if="fileError" role="alert" class="text-xs text-[#B3261E]">{{ fileError }}</p>
         </div>
-        <Input id="doc-title" v-model="title" label="Judul dokumen" placeholder="cth. Kontrak Kerja Sama 2026" required />
-        <Input id="doc-desc" v-model="description" label="Deskripsi (opsional)" placeholder="Ringkasan singkat dokumen" />
-        <Button type="submit" variant="primary" :loading="isLoading" :disabled="!canContinue">
-          Lanjut ke metadata
+        <Input id="doc-title" v-model="title" label="Perihal / Judul" placeholder="cth. Surat Tugas Perjalanan Dinas" required :error="err('title')" @blur="touch('title')" />
+        <div class="grid gap-4 sm:grid-cols-2">
+          <Input id="doc-nomor" v-model="nomor" label="Nomor surat" placeholder="cth. 001/IX/2026" :error="err('nomor')" @blur="touch('nomor')" />
+          <div class="flex flex-col gap-1.5">
+            <label for="doc-tanggal" class="text-sm font-medium text-slate-800">Tanggal surat</label>
+            <input
+              id="doc-tanggal" v-model="tanggal" type="date"
+              class="w-full rounded-md border border-light-blue bg-white px-3 py-2 focus:border-deep-blue focus:outline-none focus:ring-2 focus:ring-deep-blue/30"
+              @blur="touch('tanggal')"
+            />
+            <p v-if="err('tanggal')" role="alert" class="text-xs text-[#B3261E]">{{ err('tanggal') }}</p>
+          </div>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="flex flex-col gap-1.5">
+            <label for="doc-jenis" class="text-sm font-medium text-slate-800">Jenis dokumen</label>
+            <select
+              id="doc-jenis" v-model="jenis"
+              class="w-full rounded-md border border-light-blue bg-white px-3 py-2 focus:border-deep-blue focus:outline-none focus:ring-2 focus:ring-deep-blue/30"
+            >
+              <option v-for="j in JENIS_LIST" :key="j" :value="j">{{ j }}</option>
+            </select>
+          </div>
+          <Input id="doc-pengirim" v-model="pengirim" label="Pengirim / unit" placeholder="cth. Fakultas Teknik" />
+        </div>
+        <Input id="doc-desc" v-model="description" label="Keterangan (opsional)" placeholder="Catatan tambahan dokumen" />
+        <Button type="submit" variant="primary" :loading="isLoading" :disabled="!canSubmit">
+          Upload dokumen
         </Button>
       </form>
     </Card>
-
-    <Modal :open="metaOpen" title="Metadata dokumen" @close="metaOpen = false">
-      <div class="flex flex-col gap-4">
-        <p class="text-xs text-slate-500">
-          Isi pasangan nama–nilai di bawah (ikut ditandatangani). Kosongkan bila tidak perlu.
-        </p>
-        <div v-for="(row, i) in metaRows" :key="row.id" class="flex items-start gap-2">
-          <Input :id="`meta-key-${i}`" v-model="row.key" label="Nama field" placeholder="cth. departemen" />
-          <Input :id="`meta-val-${i}`" v-model="row.value" label="Nilai" placeholder="cth. Legal" />
-          <Button variant="ghost" class="mt-6 shrink-0" aria-label="Hapus baris" @click="removeMetaRow(i)">
-            ✕
-          </Button>
-        </div>
-        <div>
-          <Button variant="secondary" @click="addMetaRow">+ Tambah field</Button>
-        </div>
-        <p v-if="metaPreview" class="rounded-md bg-slate-50 p-2 font-mono text-xs text-slate-600">
-          {{ metaPreview }}
-        </p>
-        <p v-if="metaError" role="alert" class="text-xs text-[#B3261E]">{{ metaError }}</p>
-        <div class="flex justify-end gap-2">
-          <Button variant="ghost" @click="metaOpen = false">Batal</Button>
-          <Button variant="primary" :loading="isLoading" @click="submit">Upload dokumen</Button>
-        </div>
-      </div>
-    </Modal>
   </section>
 </template>
 
@@ -68,8 +66,13 @@ import Alert from '@/components/ui/Alert.vue'
 import Button from '@/components/ui/Button.vue'
 import Card from '@/components/ui/Card.vue'
 import Input from '@/components/ui/Input.vue'
-import Modal from '@/components/ui/Modal.vue'
 import { useDocument } from '@/composables/useDocument'
+
+const JENIS_LIST = [
+  'Lainnya', 'Peraturan', 'Instruksi', 'Surat Edaran', 'Keputusan', 'Surat Tugas',
+  'Surat Dinas', 'Surat Undangan', 'Nota Dinas', 'Memo', 'Berita Acara',
+  'Surat Keterangan', 'Surat Pengantar', 'Laporan',
+] as const
 
 const { isLoading, error, uploadDocument, clearError } = useDocument()
 const router = useRouter()
@@ -78,36 +81,50 @@ const fileRef = ref<HTMLInputElement | null>(null)
 const file = ref<File | null>(null)
 const fileError = ref('')
 const title = ref('')
+const nomor = ref('')
+const tanggal = ref('')
+const jenis = ref<(typeof JENIS_LIST)[number]>('Lainnya')
+const pengirim = ref('')
 const description = ref('')
-const metaRows = reactive<{ id: number; key: string; value: string }[]>([])
-let metaSeq = 0
-const metaError = ref('')
-const metaOpen = ref(false)
 const success = ref(false)
+const touchedFields = reactive<Record<string, boolean>>({})
+
+function touch(k: string) {
+  touchedFields[k] = true
+}
+
+function err(k: 'title' | 'nomor' | 'tanggal'): string {
+  if (!touchedFields[k]) return ''
+  if (k === 'title') return title.value.trim().length > 0 ? '' : 'Perihal wajib diisi.'
+  if (k === 'nomor') {
+    if (!nomor.value.trim()) return ''
+    return nomor.value.trim().length <= 50 ? '' : 'Nomor maksimal 50 karakter.'
+  }
+  if (k === 'tanggal') {
+    if (!tanggal.value) return ''
+    return Number.isNaN(Date.parse(tanggal.value)) ? 'Tanggal tidak valid.' : ''
+  }
+  return ''
+}
 
 const metaObject = computed(() => {
   const obj: Record<string, string> = {}
-  for (const row of metaRows) {
-    const k = row.key.trim()
-    if (k) obj[k] = row.value
-  }
+  if (nomor.value.trim()) obj.nomor = nomor.value.trim()
+  if (tanggal.value && !Number.isNaN(Date.parse(tanggal.value))) obj.tanggal = tanggal.value
+  if (jenis.value && jenis.value !== 'Lainnya') obj.jenis = jenis.value
+  if (pengirim.value.trim()) obj.pengirim = pengirim.value.trim()
   return obj
 })
 
-const metaPreview = computed(() => {
-  const keys = Object.keys(metaObject.value)
-  return keys.length ? JSON.stringify(metaObject.value) : ''
-})
-
-function addMetaRow() {
-  metaRows.push({ id: ++metaSeq, key: '', value: '' })
-}
-
-function removeMetaRow(i: number) {
-  metaRows.splice(i, 1)
-}
-
-const canContinue = computed(() => !!file.value && title.value.trim().length > 0 && !fileError.value)
+const canSubmit = computed(
+  () =>
+    !!file.value &&
+    !fileError.value &&
+    title.value.trim().length > 0 &&
+    (!nomor.value.trim() || nomor.value.trim().length <= 50) &&
+    (!tanggal.value || !Number.isNaN(Date.parse(tanggal.value))) &&
+    !isLoading.value,
+)
 
 function onFile() {
   fileError.value = ''
@@ -130,33 +147,23 @@ function onFile() {
   file.value = f
 }
 
-function openMetadata() {
-  if (!canContinue.value) return
-  metaError.value = ''
-  metaOpen.value = true
-}
-
 async function submit() {
-  metaError.value = ''
+  Object.assign(touchedFields, { title: true, nomor: true, tanggal: true })
+  if (!canSubmit.value) return
   success.value = false
-  const keys = metaRows.map((r) => r.key.trim()).filter(Boolean)
-  if (new Set(keys).size !== keys.length) {
-    metaError.value = 'Nama field tidak boleh ganda.'
-    return
-  }
   if (!file.value) return
   try {
+    const meta = JSON.stringify(metaObject.value)
     const doc = await uploadDocument({
       file: file.value,
       title: title.value.trim(),
       description: description.value.trim() || undefined,
-      metadata: metaPreview.value || undefined,
+      metadata: Object.keys(metaObject.value).length ? meta : undefined,
     })
-    metaOpen.value = false
     success.value = true
     router.push(`/org/documents/${doc.id}`)
   } catch {
-    metaOpen.value = false
+    /* error sudah di store */
   }
 }
 </script>

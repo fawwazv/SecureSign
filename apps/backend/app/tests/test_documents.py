@@ -145,6 +145,26 @@ def test_upload_dan_validasi(client: TestClient, users: dict) -> None:
     meta_salah = _upload(client, users["t_org"], metadata="bukan-json")
     assert meta_salah.status_code == 400
 
+    # Metadata terstruktur ala form: valid disimpan, invalid ditolak.
+    structured = _upload(
+        client,
+        users["t_org"],
+        title="Surat Tugas",
+        metadata='{"nomor": "001/IX/2026", "tanggal": "2026-09-29", "jenis": "Surat Tugas", "pengirim": "FTI"}',
+    )
+    assert structured.status_code == 201, structured.text
+    assert structured.json()["metadata"] == {
+        "nomor": "001/IX/2026",
+        "tanggal": "2026-09-29",
+        "jenis": "Surat Tugas",
+        "pengirim": "FTI",
+    }
+    assert _upload(client, users["t_org"], metadata='{"tanggal": "29-09-2026"}').status_code == 400
+    assert _upload(client, users["t_org"], metadata='{"jenis": "Alien"}').status_code == 400
+    assert (
+        _upload(client, users["t_org"], metadata='{"nomor": "' + "x" * 51 + '"}').status_code == 400
+    )
+
     # Signer tidak boleh upload.
     forbidden = _upload(client, users["t_signer"])
     assert forbidden.status_code == 403

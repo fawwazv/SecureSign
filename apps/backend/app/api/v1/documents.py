@@ -28,6 +28,50 @@ router = APIRouter(tags=["documents"])
 
 OrgOnly = Annotated[dict[str, Any], Depends(require_role("ORG_ADMIN", "SUPER_ADMIN"))]
 
+# Daftar jenis dokumen — sumber kebenaran tunggal, cermin JENIS_LIST di FE.
+DOCUMENT_JENIS = (
+    "Lainnya",
+    "Peraturan",
+    "Instruksi",
+    "Surat Edaran",
+    "Keputusan",
+    "Surat Tugas",
+    "Surat Dinas",
+    "Surat Undangan",
+    "Nota Dinas",
+    "Memo",
+    "Berita Acara",
+    "Surat Keterangan",
+    "Surat Pengantar",
+    "Laporan",
+)
+
+
+def validate_doc_metadata(meta: dict[str, Any]) -> dict[str, Any]:
+    """Validasi field standar form unggah. Raise AppError 400 bila langgar."""
+    nomor = meta.get("nomor", "")
+    if nomor and (not isinstance(nomor, str) or len(nomor) > 50):
+        raise AppError("INVALID_METADATA", "metadata.nomor maksimal 50 karakter.", status=400)
+    tanggal = meta.get("tanggal", "")
+    if tanggal:
+        from datetime import date
+
+        if not isinstance(tanggal, str):
+            raise AppError("INVALID_METADATA", "metadata.tanggal harus string.", status=400)
+        try:
+            date.fromisoformat(tanggal)
+        except ValueError:
+            raise AppError(
+                "INVALID_METADATA", "metadata.tanggal harus format YYYY-MM-DD.", status=400
+            ) from None
+    jenis = meta.get("jenis", "")
+    if jenis and jenis not in DOCUMENT_JENIS:
+        raise AppError("INVALID_METADATA", "metadata.jenis tidak dikenal.", status=400)
+    pengirim = meta.get("pengirim", "")
+    if pengirim and (not isinstance(pengirim, str) or len(pengirim) > 100):
+        raise AppError("INVALID_METADATA", "metadata.pengirim maksimal 100 karakter.", status=400)
+    return meta
+
 
 @router.post("/documents", status_code=201, response_model=dict)
 async def upload_document(
@@ -46,6 +90,7 @@ async def upload_document(
         raise AppError("INVALID_METADATA", "Metadata harus JSON object.", status=400) from None
     if not isinstance(meta, dict):
         raise AppError("INVALID_METADATA", "Metadata harus JSON object.", status=400)
+    meta = validate_doc_metadata(meta)
     path = f"{user['id']}/{uuid.uuid4().hex}.pdf"
     try:
         upload_file(path, content)
