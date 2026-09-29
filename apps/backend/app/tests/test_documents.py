@@ -95,7 +95,7 @@ def users(client: TestClient) -> dict:
     reset_rate_limiter()
     org = f"d+{uuid.uuid4().hex[:10]}@example.com"
     signer = f"d+{uuid.uuid4().hex[:10]}@example.com"
-    _make_user(org, "ORG_ADMIN")
+    _make_user(org, "SEKRETARIAT")
     _make_user(signer, "SIGNER")
     data = {
         "org": org,
@@ -261,7 +261,7 @@ def test_request_sign_pending_notifikasi(client: TestClient, users: dict) -> Non
     items = notif.json()["data"]
     assert any(n["type"] == "SIGN_REQUEST" for n in items)
 
-    # Org Admin tidak boleh buka pending signer.
+    # Sekretariat tidak boleh buka pending signer.
     assert (
         client.get(
             "/api/v1/sign-requests/pending", headers={"Authorization": f"Bearer {users['t_org']}"}
@@ -347,3 +347,94 @@ def test_qr_placements_simpan_validasi(client: TestClient, users: dict) -> None:
         ).status_code
         == 403
     )
+
+
+def test_is_storage_not_found() -> None:
+    from app.api.v1.documents import _is_storage_not_found
+
+    assert _is_storage_not_found(FileNotFoundError("Object not found"))
+    assert _is_storage_not_found(Exception("NoSuchKey: The specified key does not exist"))
+    assert _is_storage_not_found(Exception("StorageException 404 not found"))
+    assert not _is_storage_not_found(Exception("connection reset by peer"))
+    assert not _is_storage_not_found(Exception("Gagal mengunduh file"))
+
+
+def test_download_file_hilang_jadi_404_bukan_500(
+    client: TestClient, users: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regresi 500 preview: file hilang di storage harus 404 berkode jelas."""
+    from app.api.v1 import documents as docs_mod
+
+    doc_id = _upload(client, users["t_org"], title="Hilang1").json()["id"]
+    h_org = {"Authorization": f"Bearer {users['t_org']}"}
+
+    def _boom(_path: str) -> bytes:
+        raise FileNotFoundError("Object not found")
+
+    monkeypatch.setattr(docs_mod, "download_file", _boom)
+    res = client.get(f"/api/v1/documents/{doc_id}/download", headers=h_org)
+    assert res.status_code == 404, res.text
+    assert res.json()["error"]["code"] == "FILE_NOT_FOUND"
+
+
+def test_download_signed_hilang_jadi_404(client: TestClient, users: dict) -> None:
+    """Dokumen SIGNED yang file signed-nya hilang -> 404 SIGNED_FILE_NOT_FOUND.
+
+    Alur end-to-end: upload -> request-sign -> approve (file signed nyata
+    ter-upload + terverifikasi baca-balik) -> hapus file signed -> download
+    signed harus 404 berkode jelas, bukan 500.
+    """
+    from app.services.storage_service import get_storage_client
+
+    h_org = {"Authorization": f"Bearer {users['t_org']}"}
+    h_sign = {"Authorization": f"Bearer {users['t_signer']}"}
+
+    key = client.post(
+        "/api/v1/keys/generate",
+        json={"algorithm": "ED25519"},
+        headers=h_sign,
+    )
+    assert key.status_code == 201, key.text
+
+    doc_id = _upload(client, users["t_org"], title="SignedHilang1").json()["id"]
+
+    async def _signer_id() -> str:
+        db = Prisma()
+        await db.connect()
+        try:
+            u = await db.user.find_unique(where={"email": users["signer"]})
+            assert u
+            return u.id
+        finally:
+            await db.disconnect()
+
+    sid = asyncio.new_event_loop().run_until_complete(_signer_id())
+    req = client.post(
+        f"/api/v1/documents/{doc_id}/request-sign",
+        json={"signerId": sid},
+        headers=h_org,
+    )
+    assert req.status_code == 201, req.text
+    appr = client.post(
+        f"/api/v1/sign-requests/{req.json()['id']}/approve",
+        json={"keyPairId": key.json()["id"]},
+        headers=h_sign,
+    )
+    assert appr.status_code == 201, appr.text
+    signed_path = appr.json()["signedPdfPath"]
+    assert signed_path.startswith("signed/")
+
+    # Sanity: sebelum dihapus, unduhan signed 200.
+    ok = client.get(f"/api/v1/documents/{doc_id}/download?kind=signed", headers=h_org)
+    assert ok.status_code == 200, ok.text
+    assert ok.content.startswith(b"%PDF")
+
+    # Hapus file signed langsung dari bucket, lalu unduh lagi.
+    sb = get_storage_client()
+    try:
+        sb.storage.from_("documents").remove([signed_path])
+    except Exception:  # noqa: BLE001, S110 — hapus best-effort untuk setup kondisi hilang
+        pass
+    gone = client.get(f"/api/v1/documents/{doc_id}/download?kind=signed", headers=h_org)
+    assert gone.status_code == 404, gone.text
+    assert gone.json()["error"]["code"] == "SIGNED_FILE_NOT_FOUND"

@@ -1,8 +1,9 @@
-"""Endpoint documents — upload/list/detail (Org Admin) + request-sign."""
+"""Endpoint documents — upload/list/detail (Sekretariat) + request-sign."""
 
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from typing import Annotated, Any
 
@@ -26,7 +27,22 @@ from app.services.storage_service import download_file, upload_file
 
 router = APIRouter(tags=["documents"])
 
-OrgOnly = Annotated[dict[str, Any], Depends(require_role("ORG_ADMIN", "SUPER_ADMIN"))]
+OrgOnly = Annotated[dict[str, Any], Depends(require_role("SEKRETARIAT", "SUPER_ADMIN"))]
+
+log = logging.getLogger("signvault.documents")
+
+
+def _is_storage_not_found(exc: Exception) -> bool:
+    """Deteksi 'object tidak ada' dari Supabase Storage (pesan bervariasi per versi SDK)."""
+    text = f"{type(exc).__name__} {exc}".lower()
+    cause = getattr(exc, "__cause__", None)
+    if cause is not None:
+        text += f" {type(cause).__name__} {cause}".lower()
+    return any(
+        marker in text
+        for marker in ("not found", "nosuchkey", "does not exist", "object not exist", " 404")
+    )
+
 
 # Daftar jenis dokumen — sumber kebenaran tunggal, cermin JENIS_LIST di FE.
 DOCUMENT_JENIS = (
@@ -185,7 +201,30 @@ async def download_document(
     try:
         content = download_file(path)
     except Exception as exc:
+        log.exception("download gagal doc=%s kind=%s path=%s", id, kind, path)
+        if _is_storage_not_found(exc):
+            if kind == "signed":
+                raise AppError(
+                    "SIGNED_FILE_NOT_FOUND",
+                    "File bertanda tidak ditemukan di penyimpanan. "
+                    "Ajukan tanda tangan ulang untuk membuat file baru.",
+                    status=404,
+                ) from exc
+            raise AppError(
+                "FILE_NOT_FOUND",
+                "File asli tidak ditemukan di penyimpanan.",
+                status=404,
+            ) from exc
         raise AppError("STORAGE_ERROR", "Gagal mengunduh file.", status=500) from exc
+    if not isinstance(content, (bytes, bytearray)) or not bytes(content).startswith(b"%PDF"):
+        log.error(
+            "download isi tidak valid doc=%s kind=%s path=%s tipe=%s",
+            id,
+            kind,
+            path,
+            type(content).__name__,
+        )
+        raise AppError("STORAGE_ERROR", "Gagal mengunduh file.", status=500)
     safe_title = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in doc.title)[:80]
     return Response(
         content,

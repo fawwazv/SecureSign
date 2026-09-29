@@ -2,7 +2,7 @@
 
 Alur: cek kepemilikan -> cek key -> unduh PDF asli -> hash ->
 sign(hash+metadata kanonis) -> QR -> PDF ber-QR -> simpan (transaksional
-per item) -> notifikasi Org Admin.
+per item) -> notifikasi Sekretariat.
 """
 
 from __future__ import annotations
@@ -156,6 +156,16 @@ async def approve_one(
         upload_file(signed_path, signed_pdf)
     except Exception as exc:
         raise AppError("STORAGE_ERROR", "Gagal menyimpan PDF bertanda.", status=500) from exc
+    # Verifikasi baca-balik: pastikan file benar-benar persisten sebelum
+    # dokumen ditandai SIGNED (gagal cepat saat approve, bukan 500 saat preview).
+    try:
+        saved = download_file(signed_path)
+    except Exception as exc:
+        log.exception("verifikasi simpan gagal untuk %s", sig_id)
+        raise AppError("STORAGE_ERROR", "Gagal menyimpan PDF bertanda.", status=500) from exc
+    if not isinstance(saved, (bytes, bytearray)) or not bytes(saved).startswith(b"%PDF"):
+        log.error("verifikasi simpan isi tidak valid untuk %s", sig_id)
+        raise AppError("STORAGE_ERROR", "Gagal menyimpan PDF bertanda.", status=500)
 
     # Optimistic locking: hanya menang bila version belum berubah.
     locked = await db.document.update_many(

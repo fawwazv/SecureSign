@@ -1,7 +1,7 @@
 <template>
   <div class="flex flex-col gap-3">
-    <div class="flex flex-wrap items-center gap-2">
-      <Button variant="secondary" size="sm" :disabled="!canEdit" @click="addBox">
+    <div v-if="canEdit" class="flex flex-wrap items-center gap-2">
+      <Button variant="secondary" size="sm" @click="addBox">
         + Tambah QR Code
       </Button>
       <div v-if="pageCount > 1" class="flex items-center gap-2 text-sm">
@@ -15,6 +15,7 @@
       </div>
       <span class="text-xs text-slate-500">Total QR: {{ boxes.length }}</span>
     </div>
+    <p v-else class="text-xs text-slate-500">Total QR: {{ boxes.length }} (posisi terkunci — dokumen sudah diproses)</p>
 
     <div ref="stageRef" class="relative touch-none overflow-hidden rounded-md border border-dashed border-light-blue bg-slate-50" style="min-height: 120px">
       <slot />
@@ -26,10 +27,12 @@
       >
         <span class="absolute left-1 top-1 rounded bg-deep-blue px-1 text-[10px] font-bold text-white">QR</span>
         <span
+          v-if="canEdit"
           class="absolute -bottom-2 -right-2 h-5 w-5 cursor-nwse-resize rounded-full border-2 border-white bg-deep-blue"
           @pointerdown.stop="startDrag($event, b, 'resize')"
         />
         <button
+          v-if="canEdit"
           class="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-[#B3261E] text-[10px] font-bold text-white"
           aria-label="Hapus QR" @click.stop="removeBox(b.id)"
         >
@@ -37,11 +40,11 @@
         </button>
       </div>
       <p v-if="!boxesOnPage.length" class="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-slate-400">
-        Klik “Tambah QR Code”, lalu geser dan ubah ukurannya ke posisi yang sesuai.
+        {{ canEdit ? 'Klik “Tambah QR Code”, lalu geser dan ubah ukurannya ke posisi yang sesuai.' : 'Belum ada QR pada halaman ini.' }}
       </p>
     </div>
 
-    <Button variant="primary" :disabled="!canEdit || !dirty" :loading="saving" @click="save">
+    <Button v-if="canEdit" variant="primary" :disabled="!dirty" :loading="saving" @click="save">
       Saya sudah yakin dengan posisi QR code
     </Button>
     <p v-if="savedTick" class="text-xs text-[#1B7A3D]">Posisi tersimpan.</p>

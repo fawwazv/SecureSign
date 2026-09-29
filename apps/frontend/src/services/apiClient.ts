@@ -102,7 +102,42 @@ apiClient.interceptors.response.use(
 
 export function toApiMessage(err: unknown, fallback: string): string {
   if (axios.isAxiosError<ApiErrorBody>(err)) {
-    return err.response?.data?.error?.message ?? err.message ?? fallback
+    const data = err.response?.data as ApiErrorBody | Blob | undefined
+    // Respons JSON normal: { error: { message } }.
+    if (data && !(data instanceof Blob)) {
+      return data?.error?.message ?? err.message ?? fallback
+    }
+    // Respons Blob (unduhan PDF): body JSON tidak ter-parse otomatis.
+    return err.message ?? fallback
+  }
+  return fallback
+}
+
+/** Badan error JSON yang tersembunyi di balik respons Blob (unduhan PDF). */
+async function parseBlobErrorBody(data: unknown): Promise<ApiErrorBody | null> {
+  try {
+    if (data instanceof Blob) {
+      const text = await data.text()
+      if (!text) return null
+      const parsed = JSON.parse(text) as ApiErrorBody
+      if (parsed && typeof parsed === 'object' && 'error' in parsed) return parsed
+      return null
+    }
+  } catch {
+    /* abaikan — pemanggil pakai fallback */
+  }
+  return null
+}
+
+/** Versi async dari toApiMessage yang mampu membaca body error berbentuk Blob. */
+export async function toApiMessageAsync(err: unknown, fallback: string): Promise<string> {
+  if (axios.isAxiosError<ApiErrorBody>(err)) {
+    const data = err.response?.data as ApiErrorBody | Blob | undefined
+    if (data instanceof Blob) {
+      const parsed = await parseBlobErrorBody(data)
+      return parsed?.error?.message ?? fallback
+    }
+    return data?.error?.message ?? err.message ?? fallback
   }
   return fallback
 }
@@ -110,7 +145,23 @@ export function toApiMessage(err: unknown, fallback: string): string {
 /** Kode error kontrak BE (`error.code`), cth. EMAIL_TAKEN, EMAIL_NOT_VERIFIED. */
 export function toApiCode(err: unknown): string | undefined {
   if (axios.isAxiosError<ApiErrorBody>(err)) {
-    return err.response?.data?.error?.code
+    const data = err.response?.data as ApiErrorBody | Blob | undefined
+    if (data && !(data instanceof Blob)) return data?.error?.code
+    return undefined
+  }
+  return undefined
+}
+
+/** Versi async dari toApiCode yang mampu membaca body error berbentuk Blob. */
+export async function toApiCodeAsync(err: unknown): Promise<string | undefined> {
+  if (axios.isAxiosError<ApiErrorBody>(err)) {
+    const data = err.response?.data as ApiErrorBody | Blob | undefined
+    if (data instanceof Blob) {
+      const parsed = await parseBlobErrorBody(data)
+      return parsed?.error?.code
+    }
+    if (data && typeof data === 'object') return data?.error?.code
+    return undefined
   }
   return undefined
 }
