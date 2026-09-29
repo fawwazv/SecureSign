@@ -25,7 +25,7 @@ from app.services.storage_service import upload_file
 
 router = APIRouter(tags=["documents"])
 
-OrgOnly = Annotated[dict[str, Any], Depends(require_role("ORG_ADMIN"))]
+OrgOnly = Annotated[dict[str, Any], Depends(require_role("ORG_ADMIN", "SUPER_ADMIN"))]
 
 
 @router.post("/documents", status_code=201, response_model=dict)

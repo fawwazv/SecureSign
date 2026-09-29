@@ -23,6 +23,16 @@ def client() -> TestClient:
         yield c
 
 
+@pytest.fixture(autouse=True)
+def _no_real_email(monkeypatch) -> None:
+    """Cegah pytest mengirim email asli (pernah membanjiri inbox dengan bounce)."""
+    monkeypatch.setattr(
+        auth_mod,
+        "send_verification_email",
+        lambda email, token: f"https://test.local/verify-email?email={email}&token={token}",
+    )
+
+
 def _db_run(coro):
     return asyncio.new_event_loop().run_until_complete(coro)
 

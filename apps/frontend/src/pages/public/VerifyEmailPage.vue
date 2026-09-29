@@ -23,13 +23,23 @@
             placeholder="Tempel token dari email" :error="''"
           />
 
+          <TurnstileWidget
+            v-if="status === 'sent' || status === 'error'"
+            ref="turnstileRef"
+            @verified="onCaptchaVerified"
+            @expired="onCaptchaExpired"
+          />
+          <p v-if="needCaptcha && !captchaToken" class="text-xs text-slate-500">
+            Selesaikan CAPTCHA di atas dulu agar tombol kirim ulang aktif.
+          </p>
+
           <div v-if="email" class="flex flex-col gap-2">
             <Button
               v-if="status !== 'success'"
-              variant="secondary" block :loading="busy"
-              @click="status === 'error' || tokenInput ? doVerify() : resend()"
+              variant="secondary" block :loading="busy" :disabled="!canClick"
+              @click="isVerifyMode ? doVerify() : resend()"
             >
-              {{ status === 'error' || tokenInput ? 'Verifikasi sekarang' : 'Kirim ulang email verifikasi' }}
+              {{ isVerifyMode ? 'Verifikasi sekarang' : 'Kirim ulang email verifikasi' }}
             </Button>
             <p v-if="resent" class="text-center text-sm text-[#1B7A3D]">{{ resent }}</p>
           </div>
@@ -52,8 +62,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { Alert, Button, Card, Input } from '@/components/ui'
+import TurnstileWidget from '@/components/auth/TurnstileWidget.vue'
 import { authService } from '@/services/authService'
-import { toApiMessage } from '@/services/apiClient'
+import { toApiCode, toApiMessage } from '@/services/apiClient'
 
 const route = useRoute()
 const email = computed(() => (typeof route.query.email === 'string' ? route.query.email : ''))
@@ -65,6 +76,21 @@ const message = ref('')
 const resent = ref('')
 const busy = ref(false)
 const tokenInput = ref('')
+const captchaToken = ref('')
+const turnstileRef = ref<InstanceType<typeof TurnstileWidget> | null>(null)
+const hasCaptchaKey = computed(() => (import.meta.env.VITE_CAPTCHA_SITE_KEY ?? '').length > 0)
+/** Mode tombol: verifikasi pakai token email (tanpa captcha) vs kirim ulang (butuh captcha). */
+const isVerifyMode = computed(() => status.value === 'error' || tokenInput.value.trim().length > 0)
+const needCaptcha = computed(() => !isVerifyMode.value && hasCaptchaKey.value)
+const canClick = computed(() => !busy.value && (!needCaptcha.value || captchaToken.value.length > 0))
+
+function onCaptchaVerified(token: string) {
+  captchaToken.value = token
+}
+
+function onCaptchaExpired() {
+  captchaToken.value = ''
+}
 
 const subtitle = computed(() =>
   status.value === 'success' ? 'Akun Anda sudah aktif.' : 'Satu langkah lagi sebelum Anda bisa masuk.',
@@ -92,12 +118,20 @@ async function doVerify(usingToken?: string) {
 
 async function resend() {
   if (!email.value) return
+  if (needCaptcha.value && !captchaToken.value) return
   busy.value = true
   try {
-    resent.value = await authService.resendVerification(email.value)
+    resent.value = await authService.resendVerification(
+      email.value,
+      captchaToken.value || undefined,
+    )
   } catch (e) {
     status.value = 'error'
     message.value = toApiMessage(e, 'Gagal mengirim ulang email.')
+    if (toApiCode(e) === 'CAPTCHA_FAILED') {
+      captchaToken.value = ''
+      turnstileRef.value?.reset()
+    }
   } finally {
     busy.value = false
   }

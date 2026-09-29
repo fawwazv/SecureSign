@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { AxiosError, AxiosHeaders } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
 import { authService } from '@/services/authService'
-import type { ApiErrorBody } from '@/types/api'
+import type { ApiErrorBody, User } from '@/types/api'
 import { completeProfileErrorMessage, isPhone, loginErrorMessage } from '@/utils/validators'
 
 vi.mock('@/services/authService', () => ({
@@ -78,7 +78,24 @@ describe('authStore Google + onboarding (FE1-4)', () => {
       authProvider: 'GOOGLE',
       profileCompleted: true,
     })
+    // Perilaku anti token-basi: completeProfile me-refresh token agar klaim role baru.
+    vi.mocked(authService.refresh).mockResolvedValue({
+      user: {
+        id: 'g1',
+        fullName: 'Sinta',
+        email: 'sinta@mail.id',
+        organization: 'PT Maju',
+        role: 'ORG_ADMIN',
+        emailVerified: true,
+        createdAt: '2026-09-28T00:00:00Z',
+        phone: '+62812',
+        authProvider: 'GOOGLE',
+        profileCompleted: true,
+      } as User,
+      tokens: { accessToken: 'acc-baru', refreshToken: 'ref-baru', expiresIn: 900 },
+    })
     const store = useAuthStore()
+    localStorage.setItem('sv:refresh_token', 'ref-lama')
     const user = await store.completeProfile({
       fullName: 'Sinta',
       organization: 'PT Maju',
@@ -90,6 +107,7 @@ describe('authStore Google + onboarding (FE1-4)', () => {
     expect(store.needsOnboarding).toBe(false)
     expect(store.profileCompleted).toBe(true)
     expect(store.roleHome()).toBe('/org')
+    expect(localStorage.getItem('sv:access_token')).toBe('acc-baru')
   })
 
   it('loginWithGoogle gagal memetakan pesan SSO', async () => {

@@ -19,7 +19,7 @@ from app.services.signing_service import approve_one
 
 router = APIRouter(tags=["sign-requests"])
 
-SignerOnly = Annotated[dict[str, Any], Depends(require_role("SIGNER"))]
+SignerOnly = Annotated[dict[str, Any], Depends(require_role("SIGNER", "SUPER_ADMIN"))]
 
 
 def _ip(request: Request) -> str | None:

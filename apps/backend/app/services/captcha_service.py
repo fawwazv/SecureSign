@@ -40,4 +40,8 @@ async def verify_captcha(token: str | None, ip: str | None) -> None:
         log.error("CAPTCHA siteverify error: %s", exc)
         raise AppError("CAPTCHA_FAILED", "Verifikasi CAPTCHA gagal.", status=400) from exc
     if not isinstance(result, dict) or result.get("success") is not True:
+        log.warning(
+            "CAPTCHA ditolak, codes=%s",
+            result.get("error-codes") if isinstance(result, dict) else None,
+        )
         raise AppError("CAPTCHA_FAILED", "Verifikasi CAPTCHA gagal.", status=400)

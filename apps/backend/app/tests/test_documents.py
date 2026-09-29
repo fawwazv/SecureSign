@@ -227,3 +227,23 @@ def test_request_sign_pending_notifikasi(client: TestClient, users: dict) -> Non
         ).status_code
         == 403
     )
+
+
+def test_superadmin_global_bisa_akses_dokumen_dan_pending(client: TestClient) -> None:
+    """Regresi mismatch FE/BE: guard FE membolehkan SUPER_ADMIN, BE wajib ikut."""
+    reset_rate_limiter()
+    email = f"sa+{uuid.uuid4().hex[:10]}@example.com"
+    _make_user(email, "SUPER_ADMIN")
+    try:
+        token = _login(client, email)
+        headers = {"Authorization": f"Bearer {token}"}
+        assert client.get("/api/v1/documents", headers=headers).status_code == 200
+        assert client.get("/api/v1/sign-requests/pending", headers=headers).status_code == 200
+        assert (
+            client.post(
+                "/api/v1/keys/generate", json={"algorithm": "ED25519"}, headers=headers
+            ).status_code
+            == 201
+        )
+    finally:
+        _cleanup_user(email)

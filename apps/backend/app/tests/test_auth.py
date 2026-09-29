@@ -14,9 +14,20 @@ import pytest
 from fastapi.testclient import TestClient
 from prisma import Prisma
 
+import app.api.v1.auth as auth_mod
 import app.services.captcha_service as cap_mod
 from app.core.rate_limit import reset_rate_limiter
 from app.main import create_app
+
+
+@pytest.fixture(autouse=True)
+def _no_real_email(monkeypatch) -> None:
+    """Cegah pytest mengirim email asli (pernah membanjiri inbox dengan bounce)."""
+    monkeypatch.setattr(
+        auth_mod,
+        "send_verification_email",
+        lambda email, token: f"https://test.local/verify-email?email={email}&token={token}",
+    )
 
 
 @pytest.fixture(scope="module")

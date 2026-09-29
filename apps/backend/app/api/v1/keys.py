@@ -16,7 +16,7 @@ from app.schemas.key import GenerateKeyRequest, KeyPairResponse, to_key_response
 
 router = APIRouter(tags=["keys"])
 
-SignerOnly = Annotated[dict[str, Any], Depends(require_role("SIGNER"))]
+SignerOnly = Annotated[dict[str, Any], Depends(require_role("SIGNER", "SUPER_ADMIN"))]
 AdminOnly = Annotated[dict[str, Any], Depends(require_role("SUPER_ADMIN"))]
 
 

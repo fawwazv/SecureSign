@@ -51,9 +51,10 @@ export const authService = {
     if (refreshToken) await apiClient.post('/auth/logout', { refreshToken }).catch(() => {})
   },
 
-  async resendVerification(email: string): Promise<string> {
+  async resendVerification(email: string, captchaToken?: string): Promise<string> {
     const { data } = await apiClient.post<{ message: string }>('/auth/resend-verification', {
       email,
+      ...(captchaToken ? { captchaToken } : {}),
     })
     return data.message
   },

@@ -137,10 +137,32 @@ export const useAuthStore = defineStore('auth', {
         } catch {
           /* abaikan */
         }
-        return this.user
+        // Token lama masih membawa role lama -> refresh agar klaim role baru.
+        // Gagal refresh = paksa login ulang, jangan biarkan 403 diam-diam.
+        try {
+          const rt = localStorage.getItem('sv:refresh_token') ?? undefined
+          if (!rt) throw new Error('no-refresh-token')
+          const refreshed = await authService.refresh(rt)
+          this.hydrateFromLoginResponse(refreshed)
+          this.user = { ...(this.user as User), profileCompleted: true }
+          this.profileCompleted = true
+          try {
+            localStorage.setItem('sv:user', JSON.stringify(this.user))
+          } catch {
+            /* abaikan */
+          }
+        } catch {
+          await this.logout()
+          throw new Error('Sesi diperbarui, silakan masuk kembali.')
+        }
+        return this.user as User
       } catch (e) {
         const code = toApiCode(e)
-        this.error = completeProfileErrorMessage(code, toApiMessage(e, 'Penyimpanan profil gagal. Coba lagi.'))
+        if (e instanceof Error && e.message === 'Sesi diperbarui, silakan masuk kembali.') {
+          this.error = e.message
+        } else {
+          this.error = completeProfileErrorMessage(code, toApiMessage(e, 'Penyimpanan profil gagal. Coba lagi.'))
+        }
         throw e
       } finally {
         this.isLoading = false
