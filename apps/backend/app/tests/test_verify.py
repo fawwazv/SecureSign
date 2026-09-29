@@ -417,3 +417,70 @@ def test_verify_pades_rsa_valid_dan_format(client: TestClient, env: dict) -> Non
     res = client.get(f"/api/v1/verify/{ap.json()['id']}")
     assert res.status_code == 200, res.text
     assert res.json()["status"] == "VALID"
+
+
+def test_perf_api_30x_sign_dan_verify(client: TestClient, env: dict) -> None:
+    """Syarat tugas: rata-rata 30x penandatanganan + 30x verifikasi via API."""
+    import reportlab.pdfgen.canvas as _C
+
+    async def _sid() -> str:
+        db = Prisma()
+        await db.connect()
+        try:
+            u = await db.user.find_unique(where={"email": env["signer"]})
+            assert u
+            return u.id
+        finally:
+            await db.disconnect()
+
+    signer_id = _db_run(_sid())
+    key = client.post(
+        "/api/v1/keys/generate",
+        json={"algorithm": "ED25519"},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
+    assert key.status_code == 201, key.text
+    key_id = key.json()["id"]
+
+    def _pdf(i: int) -> bytes:
+        buf = io.BytesIO()
+        c = _C.Canvas(buf, pagesize=(595, 842))
+        c.drawString(72, 800, f"Perf30-{i}")
+        c.save()
+        return buf.getvalue()
+
+    sig_ids: list[str] = []
+    t0 = time.monotonic()
+    for i in range(30):
+        pdf = _pdf(i)
+        up = client.post(
+            "/api/v1/documents",
+            files={"file": (f"p{i}.pdf", io.BytesIO(pdf), "application/pdf")},
+            data={"title": f"Perf30-{i}", "metadata": "{}"},
+            headers={"Authorization": f"Bearer {env['t_org']}"},
+        )
+        assert up.status_code == 201, up.text
+        req = client.post(
+            f"/api/v1/documents/{up.json()['id']}/request-sign",
+            json={"signerId": signer_id},
+            headers={"Authorization": f"Bearer {env['t_org']}"},
+        )
+        assert req.status_code == 201, req.text
+        ap = client.post(
+            f"/api/v1/sign-requests/{req.json()['id']}/approve",
+            json={"keyPairId": key_id},
+            headers={"Authorization": f"Bearer {env['t_signer']}"},
+        )
+        assert ap.status_code == 201, ap.text
+        sig_ids.append(ap.json()["id"])
+    sign_avg = (time.monotonic() - t0) / 30
+    print(f"\n30x approve API avg {sign_avg:.2f}s")
+    assert sign_avg < 15
+
+    t1 = time.monotonic()
+    for sig_id in sig_ids:
+        res = client.get(f"/api/v1/verify/{sig_id}")
+        assert res.json()["status"] == "VALID"
+    verify_avg = (time.monotonic() - t1) / 30
+    print(f"30x verify API avg {verify_avg:.2f}s")
+    assert verify_avg < 15

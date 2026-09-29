@@ -1029,7 +1029,10 @@ components:
           type: string
         metadata:
           type: string
-          description: JSON string metadata kanonis yang ikut ditandatangani
+          description: >-
+            JSON string metadata kanonis yang ikut ditandatangani. Key standar
+            form unggah: nomor (maks 50), tanggal (YYYY-MM-DD), jenis (salah satu
+            dari 14 jenis dokumen), pengirim (maks 100).
     Document:
       type: object
       required: [id, title, storagePath, fileHash, metadata, status, version, createdAt, updatedAt]
@@ -1105,6 +1108,10 @@ components:
       properties:
         keyPairId:
           type: string
+        position:
+          type: string
+          maxLength: 100
+          description: Jabatan signer saat signing (opsional, snapshot ke QR)
     BatchApproveRequest:
       type: object
       required: [items]
@@ -1120,6 +1127,10 @@ components:
                 type: string
               keyPairId:
                 type: string
+              position:
+                type: string
+                maxLength: 100
+                description: Jabatan signer saat signing (opsional)
     BatchApproveItemResult:
       type: object
       required: [signRequestId, success]
@@ -1172,7 +1183,13 @@ components:
           type: string
         qrPayload:
           type: string
-          description: Link verifikasi yang di-embed ke QR
+          description: >-
+            JSON publik ringkas {v,doc,sig,name,pos,org,at,alg,url} (maks 300 char,
+            tanpa data sensitif). Hanya rujukan — keaslian dari verifikasi kriptografis.
+        signerPosition:
+          type: string
+          nullable: true
+          description: Jabatan snapshot saat signing
         signedPdfPath:
           type: string
           nullable: true
