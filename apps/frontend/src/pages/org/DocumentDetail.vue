@@ -27,6 +27,7 @@
         :initial="doc.qrPlacements || []"
         :can-edit="doc.status === 'DRAFT'"
       >
+        <Alert v-if="previewWarning" variant="warning" title="File bertanda tidak ditemukan">{{ previewWarning }}</Alert>
         <PDFPreview :src="previewUrl" :title="doc.title" />
       </QrEditor>
       <p v-if="previewError" role="alert" class="text-xs text-[#B3261E]">{{ previewError }}</p>
@@ -71,7 +72,7 @@ import Modal from '@/components/ui/Modal.vue'
 import PDFPreview from '@/components/domain/PDFPreview.vue'
 import QrEditor from '@/components/domain/QrEditor.vue'
 import { documentService, downloadDocumentBlob, listUsers, type DocumentItem } from '@/services/documentService'
-import { toApiMessage } from '@/services/apiClient'
+import { toApiMessage, toApiCodeAsync, toApiMessageAsync } from '@/services/apiClient'
 import { useDocument } from '@/composables/useDocument'
 
 const route = useRoute()
@@ -90,6 +91,8 @@ const requesting = ref(false)
 const id = computed(() => String(route.params.id))
 const previewUrl = ref('')
 const previewError = ref('')
+const previewWarning = ref('')
+let previewSeq = 0
 const signers = ref<{ id: string; fullName: string; email: string; organization: string }[]>([])
 const tone = computed(() => {
   switch (doc.value?.status) {
@@ -138,6 +141,7 @@ async function load() {
   loading.value = true
   error.value = null
   previewError.value = ''
+  previewWarning.value = ''
   try {
     doc.value = await documentService.getDocument(id.value)
     if (route.query.request === '1' && doc.value.status === 'DRAFT') await openRequest()
@@ -151,14 +155,31 @@ async function load() {
 
 /** Unduh via apiClient (bawa JWT) -> object URL untuk iframe. */
 async function loadPreview() {
+  const seq = ++previewSeq
   setPreviewUrl('')
   if (!doc.value) return
   const kind = doc.value.status === 'SIGNED' ? 'signed' : 'original'
   try {
     const blob = await downloadDocumentBlob(doc.value.id, kind)
+    if (seq !== previewSeq) return
     setPreviewUrl(URL.createObjectURL(blob))
   } catch (e) {
-    previewError.value = toApiMessage(e, 'Pratinjau tidak dapat dimuat.')
+    if (seq !== previewSeq) return
+    const code = await toApiCodeAsync(e)
+    // File bertanda lama hilang: tampilkan versi asli agar dokumen tetap terbaca.
+    if (kind === 'signed' && (code === 'SIGNED_FILE_NOT_FOUND' || code === 'NOT_SIGNED_YET')) {
+      try {
+        const fallback = await downloadDocumentBlob(doc.value.id, 'original')
+        if (seq !== previewSeq) return
+        setPreviewUrl(URL.createObjectURL(fallback))
+        previewWarning.value = await toApiMessageAsync(e, 'File bertanda tidak ditemukan, menampilkan versi asli.')
+        return
+      } catch (e2) {
+        previewError.value = await toApiMessageAsync(e2, 'Pratinjau tidak dapat dimuat.')
+        return
+      }
+    }
+    previewError.value = await toApiMessageAsync(e, 'Pratinjau tidak dapat dimuat.')
   }
 }
 
