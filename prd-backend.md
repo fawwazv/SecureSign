@@ -17,6 +17,9 @@ Membangun API FastAPI, integrasi Supabase + Prisma, kriptografi, PDF/QR, email, 
 - Setup FastAPI + Prisma + Supabase.
 - Implementasi JWT (access + refresh), Argon2id, RBAC middleware.
 - Implementasi Google OAuth (verifikasi ID Token via JWKS, auto-link by email) + onboarding profil.
+- Implementasi PAdES via pyHanko: sertifikat self-signed per key, digest SHA-256
+  atas ByteRange, CMS RSA-PSS, appearance visual, fallback detached legacy
+  (Ed25519 / tanpa sertifikat).
 - Implementasi CAPTCHA Turnstile (register/resend wajib, login opsional) + rate-limit per-path auth.
 - Implementasi kriptografi: RSA-2048 PSS, ECDSA P-256, Ed25519, AES-256-GCM, SHA-256.
 - Implementasi endpoint sesuai `openapi.yaml`.
@@ -95,6 +98,8 @@ Gunakan `packages/database/schema.prisma` sesuai PRD utama.
 - Tamper: ubah 1 byte PDF → gagal.
 - Wrong key: public key salah → gagal.
 - Fake QR: QR palsu/dimodifikasi → gagal.
+- PAdES: ByteRange utuh + CMS RSA-PSS valid + sertifikat ter-pin ke DB;
+  tamper 1 byte → INVALID; kunci salah → INVALID; Ed25519 tetap jalur legacy.
 - OAuth: token palsu/kedaluwarsa/aud salah → 401, sub beda → 401, akun Google login via password → 400, auto-link EMAIL→GOOGLE sukses.
 - CAPTCHA: tanpa token saat aktif → 400, bypass saat nonaktif/ENV=test.
 - Onboarding: PATCH sukses → flag true, PATCH kedua → 409.

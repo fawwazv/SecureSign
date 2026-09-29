@@ -1,9 +1,9 @@
 # PRD UTAMA — SignVault
 
-**Versi:** 1.3
+**Versi:** 1.4
 **Status:** Final MVP
 **Pemilik:** Product Owner
-**Terakhir diperbarui:** 2026-09-28
+**Terakhir diperbarui:** 2026-09-29
 
 ---
 
@@ -116,6 +116,10 @@ SignVault adalah aplikasi web untuk menandatangani dokumen elektronik (PDF) seca
 
 - **Hash:** SHA-256 atas byte PDF.
 - **Algoritma:** RSA-2048 PSS (salt 32, SHA-256), ECDSA P-256 (SHA-256), Ed25519.
+- **PAdES (PDF advance):** RSA/ECDSA bersertifikat self-signed ditandatangani via
+  pyHanko — digest SHA-256 atas ByteRange, CMS RSASSA-PSS, appearance visual
+  (nama/waktu/ID) + QR pada posisi Sekretaris; Ed25519 tetap jalur detached legacy.
+- **Sertifikat:** self-signed per key (demo akademik, **bukan** PSrE tersertifikasi).
 - **Private key:** AES-256-GCM, KEK dari environment variable / Supabase Vault.
 - **Canonicalization:** JCS/RFC 8785.
 - **JWT:** Access 15 menit, Refresh 7 hari, secret di `.env`.
@@ -343,7 +347,8 @@ SignVault adalah aplikasi web untuk menandatangani dokumen elektronik (PDF) seca
 | Private key bocor | KMS/Vault, AES-256-GCM, audit, revoke. |
 | Signer enggan login | Batch signing, magic link, in-app notification. |
 | Legalitas | Integrasi PSrE jika produksi. |
-| PDF berubah | Detached signature + hash verification. |
+| PDF berubah | ByteRange PAdES + detached signature + hash verification. |
+| Sertifikat self-signed tak dipercaya Adobe | Ekspektasi demo; label jelas bukan PSrE; produksi wajib sertifikat tersertifikasi. |
 | Fake QR | Signature metadata + server-side validation. |
 | Performa RSA besar | Default ECDSA/Ed25519. |
 | JWT bocor | Access token pendek, refresh rotation. |
@@ -354,7 +359,10 @@ SignVault adalah aplikasi web untuk menandatangani dokumen elektronik (PDF) seca
 
 ## 17. Catatan Legal
 
-MVP ini adalah prototipe teknis. Untuk kekuatan hukum penuh di Indonesia, perlu integrasi dengan PSrE/TTE tersertifikasi, e-KYC, dan e-Meterai.
+MVP ini adalah prototipe teknis. Tanda tangan PAdES memakai sertifikat self-signed
+(ditampilkan Adobe sebagai tidak tepercaya — benar dan ekspektasi). Untuk kekuatan
+hukum penuh di Indonesia, perlu integrasi dengan PSrE/TTE tersertifikasi, e-KYC,
+dan e-Meterai.
 
 ---
 
