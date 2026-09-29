@@ -23,7 +23,7 @@ from app.core.security import hash_password  # noqa: E402
 
 USERS = [
     ("superadmin@signvault.dev", "Super Admin", "Platform", "SUPER_ADMIN"),
-    ("orgadmin@signvault.dev", "Org Admin", "PT Contoh", "ORG_ADMIN"),
+    ("orgadmin@signvault.dev", "Sekretariat", "PT Contoh", "SEKRETARIAT"),
     ("signer@signvault.dev", "Tanda Tangan", "PT Contoh", "SIGNER"),
     ("verifier@signvault.dev", "Verifikator", "Publik", "VERIFIER"),
 ]
@@ -36,7 +36,11 @@ async def main() -> None:
         for email, name, org, role in USERS:
             existing = await db.user.find_unique(where={"email": email})
             if existing:
-                print(f"ada: {email} ({role})")
+                if str(existing.role) != role:
+                    await db.user.update(where={"id": existing.id}, data={"role": role})
+                    print(f"update: {email} ({existing.role} -> {role})")
+                else:
+                    print(f"ada: {email} ({role})")
                 continue
             await db.user.create(
                 data={

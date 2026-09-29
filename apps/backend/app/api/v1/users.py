@@ -31,7 +31,7 @@ async def get_me(
 
 @router.get("/users", response_model=dict)
 async def list_users(
-    _admin: Annotated[dict[str, Any], Depends(require_role("ORG_ADMIN", "SUPER_ADMIN"))],
+    _admin: Annotated[dict[str, Any], Depends(require_role("SEKRETARIAT", "SUPER_ADMIN"))],
     db: Annotated[Prisma, Depends(get_db)],
     page: int = 1,
     limit: int = 20,
@@ -41,7 +41,7 @@ async def list_users(
     page, limit = parse_pagination(page, limit)
     where: dict[str, Any] = {}
     if role is not None:
-        if role not in ("SUPER_ADMIN", "ORG_ADMIN", "SIGNER", "VERIFIER"):
+        if role not in ("SUPER_ADMIN", "SEKRETARIAT", "SIGNER", "VERIFIER"):
             raise AppError("INVALID_ROLE", "Role tidak dikenal.", status=400)
         where["role"] = role
     total = await db.user.count(where=where)

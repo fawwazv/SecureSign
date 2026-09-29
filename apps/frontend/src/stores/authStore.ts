@@ -49,7 +49,7 @@ export const useAuthStore = defineStore('auth', {
       switch (this.user?.role) {
         case 'SUPER_ADMIN':
           return '/admin'
-        case 'ORG_ADMIN':
+        case 'SEKRETARIAT':
           return '/org'
         case 'SIGNER':
           return '/signer'

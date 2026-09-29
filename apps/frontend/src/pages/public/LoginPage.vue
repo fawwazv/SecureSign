@@ -102,7 +102,7 @@ async function onSubmit() {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : ''
     if (redirect) await router.replace(redirect)
     else if (user.role === 'SUPER_ADMIN') await router.replace('/admin')
-    else if (user.role === 'ORG_ADMIN') await router.replace('/org')
+    else if (user.role === 'SEKRETARIAT') await router.replace('/org')
     else if (user.role === 'SIGNER') await router.replace('/signer')
     else await router.replace('/')
   } catch (e) {

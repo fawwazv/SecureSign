@@ -277,6 +277,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/documents/{id}/qr-placements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Simpan posisi QR (fraksi 0..1, origin kiri-atas). Pemilik + DRAFT saja */
+        put: operations["saveQrPlacements"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/documents/{id}/request-sign": {
         parameters: {
             query?: never;
@@ -446,7 +463,7 @@ export interface components {
             message: string;
         };
         /** @enum {string} */
-        Role: "SUPER_ADMIN" | "ORG_ADMIN" | "SIGNER" | "VERIFIER";
+        Role: "SUPER_ADMIN" | "SEKRETARIAT" | "SIGNER" | "VERIFIER";
         /** @enum {string} */
         KeyAlgorithm: "RSA_PSS_2048" | "ECDSA_P256" | "ED25519";
         /** @enum {string} */
@@ -463,7 +480,7 @@ export interface components {
             /** @description Opsional saat register; format internasional, dinormalisasi */
             phone?: string;
             /** @enum {string} */
-            role: "ORG_ADMIN" | "SIGNER";
+            role: "SEKRETARIAT" | "SIGNER";
             /** @description Tujuan penggunaan; dicatat di audit log, bukan kolom user */
             purpose: string;
             /** @description Token Turnstile; wajib bila CAPTCHA diaktifkan */
@@ -529,7 +546,7 @@ export interface components {
             /** @description Wajib saat onboarding; dinormalisasi */
             phone: string;
             /** @enum {string} */
-            role: "ORG_ADMIN" | "SIGNER";
+            role: "SEKRETARIAT" | "SIGNER";
             /** @description Dicatat di audit log, bukan kolom user */
             purpose: string;
         };
@@ -561,7 +578,7 @@ export interface components {
             file: string;
             title: string;
             description?: string;
-            /** @description JSON string metadata kanonis yang ikut ditandatangani */
+            /** @description JSON string metadata kanonis yang ikut ditandatangani. Key standar form unggah: nomor (maks 50), tanggal (YYYY-MM-DD), jenis (salah satu dari 14 jenis dokumen), pengirim (maks 100). */
             metadata?: string;
         };
         Document: {
@@ -575,6 +592,10 @@ export interface components {
             status: components["schemas"]["DocumentStatus"];
             /** @description Optimistic locking untuk batch sign */
             version: number;
+            /** @description Jumlah halaman PDF */
+            pageCount?: number;
+            /** @description Posisi QR fraksi 0..1 origin kiri-atas, dipakai saat signing */
+            qrPlacements?: Record<string, never>[];
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -598,11 +619,15 @@ export interface components {
         };
         ApproveRequest: {
             keyPairId: string;
+            /** @description Jabatan signer saat signing (opsional, snapshot ke QR) */
+            position?: string;
         };
         BatchApproveRequest: {
             items: {
                 signRequestId: string;
                 keyPairId: string;
+                /** @description Jabatan signer saat signing (opsional) */
+                position?: string;
             }[];
         };
         BatchApproveItemResult: {
@@ -628,9 +653,18 @@ export interface components {
             signatureValue: string;
             signedHash: string;
             canonicalMetadata: string;
-            /** @description Link verifikasi yang di-embed ke QR */
+            /** @description JSON publik ringkas {v,doc,sig,name,pos,org,at,alg,url} (maks 300 char, tanpa data sensitif). Hanya rujukan — keaslian dari verifikasi kriptografis. */
             qrPayload: string;
+            /** @description Jabatan snapshot saat signing */
+            signerPosition?: string | null;
             signedPdfPath?: string | null;
+            /**
+             * @description PADES = ByteRange RSA-PSS tertanam (Adobe-verifiable)
+             * @enum {string}
+             */
+            sigFormat?: "LEGACY" | "PADES";
+            /** @description ByteRange PAdES "[a b c d]" */
+            byteRange?: string | null;
             /** Format: date-time */
             createdAt: string;
         };
@@ -639,6 +673,8 @@ export interface components {
             status: "VALID" | "INVALID";
             documentName?: string;
             signerName?: string;
+            /** @description Jabatan penandatangan saat signing (opsional, dari approve) */
+            signerPosition?: string;
             /** Format: date-time */
             signedAt?: string;
             reason?: string;
@@ -1244,6 +1280,45 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    saveQrPlacements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IdParam"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    placements: {
+                        page: number;
+                        x: number;
+                        y: number;
+                        size: number;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description Posisi tersimpan */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Document"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationError"];
         };
     };
     requestSign: {

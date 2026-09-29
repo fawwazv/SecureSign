@@ -34,7 +34,7 @@
               id="role" v-model="form.role" required
               class="w-full rounded-md border border-light-blue bg-white px-3 py-2 focus:border-deep-blue focus:outline-none focus:ring-2 focus:ring-deep-blue/30"
             >
-              <option value="ORG_ADMIN">Org Admin — upload & minta tanda tangan</option>
+              <option value="SEKRETARIAT">Sekretariat — upload & minta tanda tangan</option>
               <option value="SIGNER">Signer — review & tanda tangani</option>
             </select>
           </div>
@@ -72,7 +72,7 @@ const form = reactive({
   fullName: store.user?.fullName ?? '',
   organization: '',
   phone: '',
-  role: 'ORG_ADMIN' as 'ORG_ADMIN' | 'SIGNER',
+  role: 'SEKRETARIAT' as 'SEKRETARIAT' | 'SIGNER',
   purpose: '',
 })
 const touchedFields = reactive<Record<string, boolean>>({})

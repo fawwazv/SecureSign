@@ -60,9 +60,18 @@
           </Badge>
           <p class="text-sm text-slate-600">{{ result.reason ?? defaultReason }}</p>
         </div>
+        <Alert
+          v-if="result.status !== 'VALID' && isMissingQr"
+          variant="warning" title="Kemungkinan salah file" class="mt-3"
+        >
+          File yang diunggah sama persis dengan dokumen asli sebelum ditandatangani (belum ada QR).
+          Untuk hasil VALID, unduh <strong>PDF bertanda</strong> dari halaman detail dokumen
+          (tombol "Unduh PDF bertanda"), lalu unggah file tersebut ke sini.
+        </Alert>
         <dl class="mt-4 grid gap-2 text-sm sm:grid-cols-2">
           <div><dt class="text-slate-500">Dokumen</dt><dd class="font-medium">{{ result.documentName ?? '-' }}</dd></div>
           <div><dt class="text-slate-500">Penandatangan</dt><dd class="font-medium">{{ result.signerName ?? '-' }}</dd></div>
+          <div><dt class="text-slate-500">Jabatan</dt><dd class="font-medium">{{ result.signerPosition ?? '-' }}</dd></div>
           <div><dt class="text-slate-500">Waktu tanda tangan</dt><dd class="font-medium">{{ result.signedAt ? formatDate(result.signedAt) : '-' }}</dd></div>
         </dl>
         <div v-if="result.auditTrail?.length" class="mt-4">
@@ -104,6 +113,7 @@ const fileName = computed(() => file.value?.name ?? '')
 const defaultReason = computed(() =>
   result.value?.status === 'VALID' ? 'Hash & signature cocok.' : 'Hash / signature / kunci / QR tidak valid.',
 )
+const isMissingQr = computed(() => (result.value?.reason ?? '').includes('QR-code tidak ada'))
 const auditCols = [
   { key: 'event', label: 'Peristiwa' },
   { key: 'at', label: 'Waktu' },

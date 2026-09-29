@@ -72,7 +72,7 @@ describe('authStore Google + onboarding (FE1-4)', () => {
       fullName: 'Sinta',
       email: 'sinta@mail.id',
       organization: 'PT Maju',
-      role: 'ORG_ADMIN',
+      role: 'SEKRETARIAT',
       emailVerified: true,
       createdAt: '2026-09-28T00:00:00Z',
       phone: '+62812',
@@ -86,7 +86,7 @@ describe('authStore Google + onboarding (FE1-4)', () => {
         fullName: 'Sinta',
         email: 'sinta@mail.id',
         organization: 'PT Maju',
-        role: 'ORG_ADMIN',
+        role: 'SEKRETARIAT',
         emailVerified: true,
         createdAt: '2026-09-28T00:00:00Z',
         phone: '+62812',
@@ -101,7 +101,7 @@ describe('authStore Google + onboarding (FE1-4)', () => {
       fullName: 'Sinta',
       organization: 'PT Maju',
       phone: '+62812',
-      role: 'ORG_ADMIN',
+      role: 'SEKRETARIAT',
       purpose: 'TTD kontrak',
     })
     expect(user.profileCompleted).toBe(true)

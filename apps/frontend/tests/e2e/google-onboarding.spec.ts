@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 
-type OnboardingRole = 'ORG_ADMIN' | 'SIGNER'
+type OnboardingRole = 'SEKRETARIAT' | 'SIGNER'
 
 function googleUser(role: OnboardingRole) {
   return {
@@ -44,7 +44,7 @@ async function mockGoogleOnboarding(page: Page, role: OnboardingRole) {
     })
   })
 
-  if (role === 'ORG_ADMIN') {
+  if (role === 'SEKRETARIAT') {
     await page.route(/\/api\/v1\/documents(\?|$)/, async (route) => {
       await route.fulfill({
         status: 200,
@@ -64,8 +64,8 @@ async function mockGoogleOnboarding(page: Page, role: OnboardingRole) {
 }
 
 test.describe('Google OAuth onboarding (FE1-8)', () => {
-  test('Google baru ORG_ADMIN -> onboarding -> /org', async ({ page }) => {
-    await mockGoogleOnboarding(page, 'ORG_ADMIN')
+  test('Google baru SEKRETARIAT -> onboarding -> /org', async ({ page }) => {
+    await mockGoogleOnboarding(page, 'SEKRETARIAT')
     await page.goto('/auth/callback?credential=mock-google-id-token')
 
     await expect(page).toHaveURL(/\/onboarding$/)

@@ -150,7 +150,7 @@ def test_keys_api_rbac_dan_revoke(client: TestClient) -> None:
     signer = f"k+{uuid.uuid4().hex[:10]}@example.com"
     org = f"k+{uuid.uuid4().hex[:10]}@example.com"
     admin = f"k+{uuid.uuid4().hex[:10]}@example.com"
-    for email, role in ((signer, "SIGNER"), (org, "ORG_ADMIN"), (admin, "SUPER_ADMIN")):
+    for email, role in ((signer, "SIGNER"), (org, "SEKRETARIAT"), (admin, "SUPER_ADMIN")):
         _make_verified_user(email, role)
     try:
         t_signer, t_org, t_admin = (_login(client, e) for e in (signer, org, admin))
@@ -159,7 +159,7 @@ def test_keys_api_rbac_dan_revoke(client: TestClient) -> None:
             client.post("/api/v1/keys/generate", json={"algorithm": "ED25519"}).status_code == 401
         )
 
-        # ORG_ADMIN tidak boleh generate (ikut PRD: Signer only).
+        # SEKRETARIAT tidak boleh generate (ikut PRD: Signer only).
         nope = client.post(
             "/api/v1/keys/generate",
             json={"algorithm": "ED25519"},

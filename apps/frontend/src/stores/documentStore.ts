@@ -147,11 +147,11 @@ export const useDocumentStore = defineStore('document', {
       }
     },
 
-    async approve(id: string, keyPairId: string) {
+    async approve(id: string, keyPairId: string, position?: string) {
       this.isLoading = true
       this.error = null
       try {
-        const sig = await documentService.approveSignRequest(id, keyPairId)
+        const sig = await documentService.approveSignRequest(id, keyPairId, position)
         this.selectedIds = this.selectedIds.filter((x) => x !== id)
         await this.fetchPending()
         return sig

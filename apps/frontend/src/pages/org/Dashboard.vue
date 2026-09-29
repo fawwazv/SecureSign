@@ -1,109 +1,176 @@
 <template>
-  <section aria-label="Dashboard Org Admin" class="flex flex-col gap-4">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="text-deep-blue">Dokumen Saya</h2>
-        <p class="text-sm text-slate-500">{{ total }} dokumen · klik baris untuk detail</p>
-      </div>
-      <RouterLink to="/org/upload">
-        <Button variant="primary" size="sm"><Upload class="h-4 w-4" aria-hidden="true" /> Upload PDF</Button>
-      </RouterLink>
+  <section aria-label="Dashboard Sekretariat" class="flex flex-col gap-5">
+    <div>
+      <h2 class="text-xl font-bold text-slate-900">Dashboard</h2>
+      <p class="mt-1 text-sm text-slate-500">Ringkasan aktivitas penandatanganan dokumen — {{ today }}</p>
     </div>
 
     <Alert v-if="error" variant="error" title="Gagal memuat">{{ error }}</Alert>
 
-    <div class="flex flex-wrap gap-2" role="group" aria-label="Filter status">
-      <Button
-        v-for="opt in filters"
-        :key="opt.value"
-        size="sm"
-        :variant="statusFilter === opt.value ? 'primary' : 'secondary'"
-        @click="applyFilter(opt.value)"
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <button
+        v-for="card in cards"
+        :key="card.label"
+        type="button"
+        :aria-pressed="tableFilter === card.status"
+        class="block rounded-lg border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-deep-blue"
+        @click="setTableFilter(card.status)"
       >
-        {{ opt.label }}
-      </Button>
+        <p class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{{ card.label }}</p>
+        <p class="mt-2 text-3xl font-bold" :class="card.valueClass" role="status">
+          {{ isLoading ? '…' : card.value }}
+        </p>
+        <p class="mt-1 text-xs text-slate-500">{{ card.hint }}</p>
+      </button>
     </div>
 
-    <div v-if="isLoading" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-busy="true" aria-label="Memuat dokumen">
-      <Card v-for="i in 3" :key="i"><p class="text-sm text-slate-400">Memuat…</p></Card>
-    </div>
-
-    <div v-else-if="documents.length === 0" class="rounded-lg bg-white p-8 text-center shadow-sm">
-      <p class="font-semibold text-deep-blue">Belum ada dokumen</p>
-      <p class="mt-1 text-sm text-slate-500">Upload PDF pertama Anda untuk memulai alur tanda tangan.</p>
-      <RouterLink to="/org/upload" class="mt-4 inline-block">
-        <Button variant="accent" size="sm">Upload sekarang</Button>
-      </RouterLink>
-    </div>
-
-    <div v-else class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-      <DocumentCard v-for="doc in documents" :key="doc.id" :document="doc">
-        <template #actions>
-          <RouterLink :to="`/org/documents/${doc.id}`">
-            <Button variant="secondary" size="sm">Detail</Button>
+    <div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 class="font-bold text-slate-900">{{ tableTitle }}</h3>
+          <p class="text-xs text-slate-500">{{ displayRows.length }} dokumen ditampilkan</p>
+        </div>
+        <div class="flex gap-2">
+          <Button v-if="tableFilter" variant="ghost" size="sm" @click="setTableFilter('')">Tampilkan semua</Button>
+          <RouterLink to="/org/upload">
+            <Button variant="primary" size="sm">+ Unggah Dokumen</Button>
           </RouterLink>
-          <Button
-            v-if="doc.status === 'DRAFT'"
-            variant="ghost"
-            size="sm"
-            @click="quickRequest(doc.id)"
-          >
-            Minta tanda tangan
-          </Button>
+        </div>
+      </div>
+      <p v-if="isLoading || tableLoading" class="p-4 text-sm text-slate-400" aria-busy="true">Memuat dokumen…</p>
+      <Table v-else :columns="columns" :rows="displayRows" empty-text="Belum ada dokumen pada filter ini.">
+        <template #cell(title)="{ row }">
+          <p class="font-semibold text-slate-900">{{ String(row.title) }}</p>
+          <p v-if="row.description" class="max-w-64 truncate text-xs text-slate-500">{{ String(row.description) }}</p>
         </template>
-      </DocumentCard>
-    </div>
-
-    <div v-if="totalPages > 1" class="flex items-center justify-center gap-2">
-      <Button variant="ghost" size="sm" :disabled="page <= 1" @click="goPage(page - 1)">Sebelumnya</Button>
-      <span class="text-sm text-slate-600" role="status">Halaman {{ page }} / {{ totalPages }}</span>
-      <Button variant="ghost" size="sm" :disabled="page >= totalPages" @click="goPage(page + 1)">Berikutnya</Button>
+        <template #cell(status)="{ value }">
+          <Badge :tone="statusTone(value as string)">{{ statusLabel(value as string) }}</Badge>
+        </template>
+        <template #cell(createdAt)="{ value }">
+          {{ formatDate(value as string) }}
+        </template>
+        <template #cell(actions)="{ row }">
+          <RouterLink :to="`/org/documents/${String(row.id)}`" class="text-xs font-semibold text-deep-blue hover:underline">
+            Lihat Detail
+          </RouterLink>
+        </template>
+      </Table>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { Upload } from 'lucide-vue-next'
+import { computed, onMounted, ref } from 'vue'
 import Alert from '@/components/ui/Alert.vue'
+import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
-import Card from '@/components/ui/Card.vue'
-import DocumentCard from '@/components/domain/DocumentCard.vue'
-import { useDocument } from '@/composables/useDocument'
-import { useDocumentStore } from '@/stores/documentStore'
-import type { DocumentStatus } from '@/services/documentService'
+import Table from '@/components/ui/Table.vue'
+import { documentService, type DocumentItem, type DocumentStatus } from '@/services/documentService'
+import { toApiMessage } from '@/services/apiClient'
 
-const { documents, documentsTotal, documentsPage, statusFilter, isLoading, error, setStatusFilter, fetchDocuments, clearError } = useDocument()
-const store = useDocumentStore()
-const router = useRouter()
+type Row = Record<string, unknown>
 
-const filters: Array<{ label: string; value: DocumentStatus | '' }> = [
-  { label: 'Semua', value: '' },
-  { label: 'Draf', value: 'DRAFT' },
-  { label: 'Menunggu', value: 'PENDING' },
-  { label: 'Ditandatangani', value: 'SIGNED' },
-  { label: 'Ditolak', value: 'REJECTED' },
+const stats = ref({ total: 0, signed: 0, pending: 0, rejected: 0 })
+const recent = ref<Row[]>([])
+const tableFilter = ref<DocumentStatus | ''>('')
+const tableRows = ref<Row[]>([])
+const tableLoading = ref(false)
+const isLoading = ref(true)
+const error = ref<string | null>(null)
+
+const today = computed(() =>
+  new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }),
+)
+
+const cards = computed(() => [
+  { label: 'Total Dokumen', value: stats.value.total, hint: 'Keseluruhan dokumen', status: '' as DocumentStatus | '', valueClass: 'text-slate-900' },
+  { label: 'Ditandatangani', value: stats.value.signed, hint: 'Selesai diproses', status: 'SIGNED' as DocumentStatus | '', valueClass: 'text-[#1B7A3D]' },
+  { label: 'Dalam Proses', value: stats.value.pending, hint: 'Menunggu penyelesaian', status: 'PENDING' as DocumentStatus | '', valueClass: 'text-brown' },
+  { label: 'Ditolak', value: stats.value.rejected, hint: 'Memerlukan tindakan', status: 'REJECTED' as DocumentStatus | '', valueClass: 'text-slate-900' },
+])
+
+const tableTitle = computed(() => {
+  if (tableFilter.value === 'SIGNED') return 'Dokumen — Ditandatangani'
+  if (tableFilter.value === 'PENDING') return 'Dokumen — Dalam Proses'
+  if (tableFilter.value === 'REJECTED') return 'Dokumen — Ditolak'
+  if (tableFilter.value === 'DRAFT') return 'Dokumen — Draf'
+  return 'Dokumen Terbaru'
+})
+
+const displayRows = computed(() => (tableFilter.value ? tableRows.value : recent.value))
+
+const columns = [
+  { key: 'title', label: 'Nama Berkas' },
+  { key: 'status', label: 'Status' },
+  { key: 'createdAt', label: 'Dibuat' },
+  { key: 'actions', label: 'Aksi' },
 ]
 
-const total = computed(() => documentsTotal.value)
-const page = computed(() => documentsPage.value)
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / store.documentsLimit)))
-
-function applyFilter(v: DocumentStatus | '') {
-  clearError()
-  setStatusFilter(v)
-  fetchDocuments()
+function statusTone(status: string): 'pending' | 'signed' | 'rejected' | 'neutral' | 'draft' {
+  if (status === 'PENDING') return 'pending'
+  if (status === 'SIGNED') return 'signed'
+  if (status === 'REJECTED') return 'rejected'
+  if (status === 'DRAFT') return 'draft'
+  return 'neutral'
 }
 
-function goPage(p: number) {
-  store.documentsPage = p
-  fetchDocuments()
+function statusLabel(status: string): string {
+  if (status === 'PENDING') return 'Dalam Proses'
+  if (status === 'SIGNED') return 'Ditandatangani'
+  if (status === 'REJECTED') return 'Ditolak'
+  if (status === 'DRAFT') return 'Draf'
+  return status
 }
 
-function quickRequest(id: string) {
-  router.push(`/org/documents/${id}?request=1`)
+function formatDate(value: string): string {
+  try {
+    return new Date(value).toLocaleString('id-ID', {
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    })
+  } catch {
+    return value
+  }
 }
 
-onMounted(fetchDocuments)
+async function count(status: DocumentStatus | ''): Promise<number> {
+  const res = await documentService.listDocuments({ page: 1, limit: 1, status })
+  return res.total
+}
+
+/** Klik kartu statistik = filter tabel di halaman ini (tetap di /org). */
+async function setTableFilter(status: DocumentStatus | '') {
+  tableFilter.value = status
+  if (!status) return
+  tableLoading.value = true
+  try {
+    const res = await documentService.listDocuments({ page: 1, limit: 10, status })
+    tableRows.value = (res.data as DocumentItem[]).map((d) => ({ ...(d as unknown as Row) }))
+  } catch (e) {
+    error.value = toApiMessage(e, 'Daftar dokumen gagal dimuat.')
+  } finally {
+    tableLoading.value = false
+  }
+}
+
+async function load() {
+  isLoading.value = true
+  error.value = null
+  try {
+    const [total, signed, pending, rejected, latest] = await Promise.all([
+      count(''),
+      count('SIGNED'),
+      count('PENDING'),
+      count('REJECTED'),
+      documentService.listDocuments({ page: 1, limit: 5 }),
+    ])
+    stats.value = { total, signed, pending, rejected }
+    recent.value = (latest.data as DocumentItem[]).map((d) => ({ ...(d as unknown as Row) }))
+  } catch (e) {
+    error.value = toApiMessage(e, 'Ringkasan dokumen gagal dimuat.')
+  } finally {
+    isLoading.value = false
+  }
+}
+
+onMounted(load)
 </script>

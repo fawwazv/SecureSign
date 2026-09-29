@@ -180,8 +180,11 @@ export const documentService = {
     return data
   },
 
-  async approveSignRequest(id: string, keyPairId: string) {
-    const { data } = await apiClient.post<SignatureItem>(`/sign-requests/${id}/approve`, { keyPairId })
+  async approveSignRequest(id: string, keyPairId: string, position?: string) {
+    const { data } = await apiClient.post<SignatureItem>(`/sign-requests/${id}/approve`, {
+      keyPairId,
+      ...(position?.trim() ? { position: position.trim().slice(0, 100) } : {}),
+    })
     return data
   },
 

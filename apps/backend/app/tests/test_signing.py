@@ -121,7 +121,7 @@ def env(client: TestClient) -> dict:
     org = f"s+{uuid.uuid4().hex[:10]}@example.com"
     signer = f"s+{uuid.uuid4().hex[:10]}@example.com"
     admin = f"s+{uuid.uuid4().hex[:10]}@example.com"
-    _make_user(org, "ORG_ADMIN")
+    _make_user(org, "SEKRETARIAT")
     _make_user(signer, "SIGNER")
     _make_user(admin, "SUPER_ADMIN")
     data = {
@@ -345,3 +345,9 @@ def test_approve_dengan_jabatan_tersimpan_dan_qr_kaya(client: TestClient, env: d
     assert data["pos"] == "Direktur Keuangan"
     assert data["doc"] == doc_id and data["sig"] == body["id"]
     assert data["alg"] == "ED25519"
+
+    # Jabatan ikut muncul di hasil verifikasi publik.
+    ver = client.get(f"/api/v1/verify/{body['id']}")
+    assert ver.status_code == 200, ver.text
+    assert ver.json()["status"] == "VALID"
+    assert ver.json()["signerPosition"] == "Direktur Keuangan"

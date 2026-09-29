@@ -44,6 +44,7 @@
             </div>
             <p v-if="keyError" role="alert" class="text-xs text-[#B3261E]">{{ keyError }}</p>
           </div>
+          <Input id="signer-position" v-model="position" label="Jabatan saat menandatangani (opsional)" placeholder="cth. Kaprodi" />
           <div class="flex flex-wrap gap-2">
             <Button variant="primary" :loading="acting" :disabled="!keyPairId.trim() || item.status !== 'PENDING'" @click="doApprove">
               Tandatangani
@@ -53,6 +54,13 @@
             </Button>
           </div>
           <QRViewer v-if="qrPayload" :qr-payload="qrPayload" />
+          <div v-if="item.status === 'APPROVED'" class="flex flex-col gap-1.5">
+            <Button variant="secondary" size="sm" :loading="downloadingFinal" @click="downloadFinal">
+              Unduh PDF final bertanda (ber-QR)
+            </Button>
+            <p v-if="finalError" role="alert" class="text-xs text-[#B3261E]">{{ finalError }}</p>
+            <p v-else class="text-xs text-slate-500">Pratinjau di kanan adalah dokumen asli — QR hanya ada di file final.</p>
+          </div>
         </div>
       </Card>
       <PDFPreview :src="previewUrl" title="Dokumen yang diminta" />
@@ -96,6 +104,7 @@ const loading = ref(true)
 const error = ref<string | null>(null)
 const notice = ref('')
 const keyPairId = ref('')
+const position = ref('')
 const keys = ref<KeyPairItem[]>([])
 const activeKeys = computed(() => keys.value.filter((k) => !k.revoked))
 const newKeyAlgo = ref<'RSA_PSS_2048' | 'ECDSA_P256' | 'ED25519'>('ED25519')
@@ -104,6 +113,8 @@ const keyError = ref('')
 const qrPayload = ref('')
 const previewUrl = ref('')
 const previewError = ref('')
+const downloadingFinal = ref(false)
+const finalError = ref('')
 
 function setPreviewUrl(url: string) {
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
@@ -118,11 +129,33 @@ function back() {
   router.push('/signer')
 }
 
+/** Unduh file final bertanda (ber-QR) — signer berhak via sign-request-nya. */
+async function downloadFinal() {
+  if (!item.value || downloadingFinal.value) return
+  finalError.value = ''
+  downloadingFinal.value = true
+  try {
+    const blob = await downloadDocumentBlob(item.value.documentId, 'signed')
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `final-${item.value.documentId.slice(0, 12)}-signed.pdf`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  } catch (e) {
+    finalError.value = toApiMessage(e, 'PDF final tidak dapat diunduh.')
+  } finally {
+    downloadingFinal.value = false
+  }
+}
+
 async function doApprove() {
   notice.value = ''
   acting.value = true
   try {
-    const sig = await approve(id.value, keyPairId.value.trim())
+    const sig = await approve(id.value, keyPairId.value.trim(), position.value.trim() || undefined)
     qrPayload.value = sig.qrPayload
     notice.value = 'Dokumen ditandatangani. QR tertempel di dokumen final.'
     // Jangan load() ulang: request yang sudah APPROVED keluar dari daftar

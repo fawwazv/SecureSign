@@ -42,7 +42,7 @@ const payload: CompleteProfilePayload = {
   fullName: 'Sinta',
   organization: 'PT Maju',
   phone: '+628123456789',
-  role: 'ORG_ADMIN',
+  role: 'SEKRETARIAT',
   purpose: 'kerja',
 }
 
@@ -55,22 +55,22 @@ describe('completeProfile me-refresh token (anti token basi)', () => {
   })
 
   it('sukses PATCH -> refresh terpanggil -> token baru tersimpan', async () => {
-    mockedComplete.mockResolvedValue(user({ role: 'ORG_ADMIN' }))
+    mockedComplete.mockResolvedValue(user({ role: 'SEKRETARIAT' }))
     const refreshed: LoginResponse = {
-      user: user({ role: 'ORG_ADMIN', organization: 'PT Maju', profileCompleted: true }),
+      user: user({ role: 'SEKRETARIAT', organization: 'PT Maju', profileCompleted: true }),
       tokens: tokens('acc-baru', 'ref-baru'),
     }
     mockedRefresh.mockResolvedValue(refreshed)
     const store = useAuthStore()
     const out = await store.completeProfile(payload)
     expect(mockedRefresh).toHaveBeenCalledWith('ref-lama')
-    expect(out.role).toBe('ORG_ADMIN')
+    expect(out.role).toBe('SEKRETARIAT')
     expect(localStorage.getItem('sv:access_token')).toBe('acc-baru')
     expect(store.profileCompleted).toBe(true)
   })
 
   it('refresh gagal -> paksa logout, tidak macet 403 diam-diam', async () => {
-    mockedComplete.mockResolvedValue(user({ role: 'ORG_ADMIN' }))
+    mockedComplete.mockResolvedValue(user({ role: 'SEKRETARIAT' }))
     mockedRefresh.mockRejectedValue(new Error('jaringan putus'))
     const store = useAuthStore()
     await expect(store.completeProfile(payload)).rejects.toThrow('Sesi diperbarui')

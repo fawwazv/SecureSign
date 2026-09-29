@@ -31,6 +31,21 @@
         <PDFPreview :src="previewUrl" :title="doc.title" />
       </QrEditor>
       <p v-if="previewError" role="alert" class="text-xs text-[#B3261E]">{{ previewError }}</p>
+      <div v-if="previewUrl" class="flex flex-wrap items-center gap-2">
+        <span class="text-xs text-slate-500">
+          Pratinjau: {{ previewKind === 'signed' ? 'PDF bertanda (ber-QR)' : 'PDF asli (tanpa QR)' }}
+        </span>
+        <Button size="sm" variant="secondary" :loading="downloading" @click="downloadKind('original')">
+          Unduh PDF asli
+        </Button>
+        <Button
+          v-if="doc.status === 'SIGNED'"
+          size="sm" variant="secondary" :loading="downloading" @click="downloadKind('signed')"
+        >
+          Unduh PDF bertanda
+        </Button>
+      </div>
+      <p v-if="downloadError" role="alert" class="text-xs text-[#B3261E]">{{ downloadError }}</p>
     </div>
 
     <Modal :open="reqOpen" title="Minta tanda tangan" @close="reqOpen = false">
@@ -92,6 +107,9 @@ const id = computed(() => String(route.params.id))
 const previewUrl = ref('')
 const previewError = ref('')
 const previewWarning = ref('')
+const previewKind = ref<'signed' | 'original' | ''>('')
+const downloadError = ref('')
+const downloading = ref(false)
 let previewSeq = 0
 const signers = ref<{ id: string; fullName: string; email: string; organization: string }[]>([])
 const tone = computed(() => {
@@ -142,6 +160,8 @@ async function load() {
   error.value = null
   previewError.value = ''
   previewWarning.value = ''
+  previewKind.value = ''
+  downloadError.value = ''
   try {
     doc.value = await documentService.getDocument(id.value)
     if (route.query.request === '1' && doc.value.status === 'DRAFT') await openRequest()
@@ -163,6 +183,7 @@ async function loadPreview() {
     const blob = await downloadDocumentBlob(doc.value.id, kind)
     if (seq !== previewSeq) return
     setPreviewUrl(URL.createObjectURL(blob))
+    previewKind.value = kind
   } catch (e) {
     if (seq !== previewSeq) return
     const code = await toApiCodeAsync(e)
@@ -172,6 +193,7 @@ async function loadPreview() {
         const fallback = await downloadDocumentBlob(doc.value.id, 'original')
         if (seq !== previewSeq) return
         setPreviewUrl(URL.createObjectURL(fallback))
+        previewKind.value = 'original'
         previewWarning.value = await toApiMessageAsync(e, 'File bertanda tidak ditemukan, menampilkan versi asli.')
         return
       } catch (e2) {
@@ -186,6 +208,33 @@ async function loadPreview() {
 function setPreviewUrl(url: string) {
   if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
   previewUrl.value = url
+}
+
+/** Unduh eksplisit per versi agar file untuk verifikasi tidak tertukar. */
+async function downloadKind(kind: 'original' | 'signed') {
+  if (!doc.value || downloading.value) return
+  downloadError.value = ''
+  downloading.value = true
+  try {
+    const blob = await downloadDocumentBlob(doc.value.id, kind)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${doc.value.title.replace(/[^\w\-]+/g, '_').slice(0, 80)}-${kind}.pdf`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  } catch (e) {
+    downloadError.value = await toApiMessageAsync(
+      e,
+      kind === 'signed'
+        ? 'PDF bertanda tidak dapat diunduh (file bertanda hilang di penyimpanan).'
+        : 'PDF asli tidak dapat diunduh.',
+    )
+  } finally {
+    downloading.value = false
+  }
 }
 
 /** Muat daftar Signer saat modal dibuka (bukan UUID mentah). */

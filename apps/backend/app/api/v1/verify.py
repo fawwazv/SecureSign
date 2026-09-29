@@ -97,6 +97,7 @@ async def _valid_result(db: Prisma, sig: Any) -> dict[str, Any]:
         "status": "VALID",
         "documentName": doc.title if doc else None,
         "signerName": signer.fullName if signer else None,
+        "signerPosition": getattr(sig, "signerPosition", None),
         "signedAt": str(sig.createdAt),
         "reason": None,
         "auditTrail": await _audit_trail(db, sig),

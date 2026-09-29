@@ -108,12 +108,12 @@ def test_onboarding_lengkap_lalu_idempoten_409(client: TestClient, monkeypatch) 
                 "fullName": "Sinta",
                 "organization": "PT Maju",
                 "phone": "+628123456789",
-                "role": "ORG_ADMIN",
+                "role": "SEKRETARIAT",
                 "purpose": "kerja",
             },
         )
         assert done.status_code == 200, done.text
-        assert done.json()["role"] == "ORG_ADMIN"
+        assert done.json()["role"] == "SEKRETARIAT"
         assert done.json()["profileCompleted"] is True
         again = client.patch(
             "/api/v1/users/me/complete-profile",
@@ -122,7 +122,7 @@ def test_onboarding_lengkap_lalu_idempoten_409(client: TestClient, monkeypatch) 
                 "fullName": "Sinta",
                 "organization": "PT Maju",
                 "phone": "+628123456789",
-                "role": "ORG_ADMIN",
+                "role": "SEKRETARIAT",
                 "purpose": "kerja",
             },
         )

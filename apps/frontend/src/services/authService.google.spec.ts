@@ -33,7 +33,7 @@ describe('authService Google + onboarding (FE1-3)', () => {
       fullName: 'Sinta Prabowo',
       organization: 'PT Maju Jaya',
       phone: '+628123456789',
-      role: 'ORG_ADMIN' as const,
+      role: 'SEKRETARIAT' as const,
       purpose: 'TTD kontrak vendor',
     }
     const res = await authService.completeProfile(payload)

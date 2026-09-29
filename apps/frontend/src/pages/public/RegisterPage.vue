@@ -37,7 +37,7 @@
               class="w-full rounded-md border border-light-blue bg-white px-3 py-2 focus:border-deep-blue focus:outline-none focus:ring-2 focus:ring-deep-blue/30"
               :aria-invalid="!!err('role')"
             >
-              <option value="ORG_ADMIN">Org Admin — upload & minta tanda tangan</option>
+              <option value="SEKRETARIAT">Sekretariat — upload & minta tanda tangan</option>
               <option value="SIGNER">Signer — review & tanda tangani</option>
             </select>
             <p v-if="err('role')" role="alert" class="text-xs text-[#B3261E]">{{ err('role') }}</p>
@@ -100,7 +100,7 @@ const form = reactive({
   password: '',
   organization: '',
   phone: '',
-  role: 'ORG_ADMIN' as 'ORG_ADMIN' | 'SIGNER',
+  role: 'SEKRETARIAT' as 'SEKRETARIAT' | 'SIGNER',
   purpose: '',
   captchaToken: '',
 })
@@ -127,7 +127,7 @@ function err(k: keyof typeof form): string {
     case 'phone':
       return isPhone(form.phone) ? '' : 'Nomor telepon tidak valid (cth. +62812...).'
     case 'role':
-      return ['ORG_ADMIN', 'SIGNER'].includes(form.role) ? '' : 'Pilih peran.'
+      return ['SEKRETARIAT', 'SIGNER'].includes(form.role) ? '' : 'Pilih peran.'
     case 'purpose':
       return form.purpose.trim().length >= 3 ? '' : 'Ceritakan keperluan penggunaan.'
     default:

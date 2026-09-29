@@ -25,7 +25,7 @@ const resp: LoginResponse = {
     fullName: 'Sinta Prabowo',
     email: 'sinta@pt.id',
     organization: 'PT Maju',
-    role: 'ORG_ADMIN',
+    role: 'SEKRETARIAT',
     emailVerified: true,
     authProvider: 'EMAIL',
     profileCompleted: true,

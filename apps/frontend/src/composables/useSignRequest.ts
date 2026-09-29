@@ -16,7 +16,7 @@ export function useSignRequest() {
     fetchPending: () => store.fetchPending(),
     toggleSelect: (id: string) => store.toggleSelect(id),
     clearSelection: () => store.clearSelection(),
-    approve: (id: string, keyPairId: string) => store.approve(id, keyPairId),
+    approve: (id: string, keyPairId: string, position?: string) => store.approve(id, keyPairId, position),
     batchApprove: (items: Array<{ signRequestId: string; keyPairId: string }>) => store.batchApprove(items),
     reject: (id: string, reason: string) => store.reject(id, reason),
     clearError: () => store.clearError(),

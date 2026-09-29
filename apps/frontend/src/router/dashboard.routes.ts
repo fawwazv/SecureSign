@@ -9,7 +9,7 @@ import { requireAuth, requireRole } from './guards'
  * milik FE2 atau modul bootstrap dashboard.
  */
 export function registerDashboardRoutes(router: Router): void {
-  const orgOnly = requireRole(['ORG_ADMIN', 'SUPER_ADMIN'])
+  const orgOnly = requireRole(['SEKRETARIAT', 'SUPER_ADMIN'])
   const signerOnly = requireRole(['SIGNER', 'SUPER_ADMIN'])
   const superOnly = requireRole(['SUPER_ADMIN'])
 
@@ -31,6 +31,13 @@ export function registerDashboardRoutes(router: Router): void {
         component: () => import('@/pages/org/Upload.vue'),
         beforeEnter: orgOnly,
         meta: { title: 'Upload PDF — SignVault' },
+      },
+      {
+        path: 'documents',
+        name: 'org-documents',
+        component: () => import('@/pages/org/DocumentList.vue'),
+        beforeEnter: orgOnly,
+        meta: { title: 'Dokumen — SignVault' },
       },
       {
         path: 'documents/:id',

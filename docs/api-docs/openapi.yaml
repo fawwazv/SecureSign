@@ -814,7 +814,7 @@ components:
           type: string
     Role:
       type: string
-      enum: [SUPER_ADMIN, ORG_ADMIN, SIGNER, VERIFIER]
+      enum: [SUPER_ADMIN, SEKRETARIAT, SIGNER, VERIFIER]
     KeyAlgorithm:
       type: string
       enum: [RSA_PSS_2048, ECDSA_P256, ED25519]
@@ -848,7 +848,7 @@ components:
           description: Opsional saat register; format internasional, dinormalisasi
         role:
           type: string
-          enum: [ORG_ADMIN, SIGNER]
+          enum: [SEKRETARIAT, SIGNER]
         purpose:
           type: string
           minLength: 3
@@ -973,7 +973,7 @@ components:
           description: Wajib saat onboarding; dinormalisasi
         role:
           type: string
-          enum: [ORG_ADMIN, SIGNER]
+          enum: [SEKRETARIAT, SIGNER]
         purpose:
           type: string
           minLength: 3
@@ -1215,6 +1215,9 @@ components:
           type: string
         signerName:
           type: string
+        signerPosition:
+          type: string
+          description: Jabatan penandatangan saat signing (opsional, dari approve)
         signedAt:
           type: string
           format: date-time

@@ -51,7 +51,7 @@ export interface CompleteProfilePayload {
   fullName: string
   organization: string
   phone: string
-  role: Extract<Role, 'ORG_ADMIN' | 'SIGNER'>
+  role: Extract<Role, 'SEKRETARIAT' | 'SIGNER'>
   purpose: string
 }
 

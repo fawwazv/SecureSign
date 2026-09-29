@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.schemas.user import UserResponse
 
-ALLOWED_REGISTER_ROLES = ("ORG_ADMIN", "SIGNER")
+ALLOWED_REGISTER_ROLES = ("SEKRETARIAT", "SIGNER")
 PHONE_RE = re.compile(r"^[+0-9][0-9\s\-()]{6,19}$")
 
 
@@ -28,7 +28,7 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=128)
     organization: str = Field(min_length=2, max_length=100)
     phone: str | None = Field(default=None, max_length=20)
-    role: Literal["ORG_ADMIN", "SIGNER"]
+    role: Literal["SEKRETARIAT", "SIGNER"]
     purpose: str = Field(min_length=3, max_length=500)
     captcha_token: str | None = Field(alias="captchaToken", default=None)
 
@@ -53,7 +53,7 @@ class CompleteProfileRequest(BaseModel):
     full_name: str = Field(alias="fullName", min_length=3, max_length=100)
     organization: str = Field(min_length=2, max_length=100)
     phone: str = Field(min_length=7, max_length=20)
-    role: Literal["ORG_ADMIN", "SIGNER"]
+    role: Literal["SEKRETARIAT", "SIGNER"]
     purpose: str = Field(min_length=3, max_length=500)
 
     @field_validator("phone")

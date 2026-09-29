@@ -276,7 +276,7 @@ def test_list_users_rbac_dan_filter(client: TestClient) -> None:
     org = _email()
     signer = _email()
     try:
-        _register(client, org, role="ORG_ADMIN")
+        _register(client, org, role="SEKRETARIAT")
         _register(client, signer, role="SIGNER")
 
         async def _verify(email: str) -> None:
