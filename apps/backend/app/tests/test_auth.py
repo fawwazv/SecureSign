@@ -270,3 +270,51 @@ def test_login_password_salah_401(client: TestClient) -> None:
         assert res.json()["error"]["code"] == "INVALID_CREDENTIALS"
     finally:
         _cleanup(email)
+
+
+def test_list_users_rbac_dan_filter(client: TestClient) -> None:
+    org = _email()
+    signer = _email()
+    try:
+        _register(client, org, role="ORG_ADMIN")
+        _register(client, signer, role="SIGNER")
+
+        async def _verify(email: str) -> None:
+            db = Prisma()
+            await db.connect()
+            try:
+                user = await db.user.find_unique(where={"email": email})
+                assert user
+                await db.user.update(where={"id": user.id}, data={"emailVerified": True})
+            finally:
+                await db.disconnect()
+
+        def _login(email: str) -> str:
+            res = client.post("/api/v1/auth/login", json={"email": email, "password": "Rahasia123"})
+            assert res.status_code == 200, res.text
+            return res.json()["tokens"]["accessToken"]
+
+        asyncio.new_event_loop().run_until_complete(_verify(org))
+        asyncio.new_event_loop().run_until_complete(_verify(signer))
+        t_org, t_signer = _login(org), _login(signer)
+
+        res = client.get("/api/v1/users?role=SIGNER", headers={"Authorization": f"Bearer {t_org}"})
+        assert res.status_code == 200, res.text
+        body = res.json()
+        assert {"data", "page", "limit", "total"} <= set(body)
+        assert all(u["role"] == "SIGNER" for u in body["data"])
+        assert all("passwordHash" not in u and "verificationToken" not in u for u in body["data"])
+
+        bad_role = client.get(
+            "/api/v1/users?role=ANEH", headers={"Authorization": f"Bearer {t_org}"}
+        )
+        assert bad_role.status_code == 400
+
+        assert (
+            client.get("/api/v1/users", headers={"Authorization": f"Bearer {t_signer}"}).status_code
+            == 403
+        )
+        assert client.get("/api/v1/users").status_code == 401
+    finally:
+        _cleanup(org)
+        _cleanup(signer)

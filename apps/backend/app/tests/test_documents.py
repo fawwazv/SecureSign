@@ -17,6 +17,22 @@ from app.main import create_app
 FAKE_PDF = b"%PDF-1.4\n%fake untuk test\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF"
 
 
+def _real_pdf_bytes() -> bytes:
+    import io as _io
+
+    from reportlab.pdfgen import canvas
+
+    buf = _io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(595, 842))
+    c.setFont("Helvetica", 12)
+    c.drawString(72, 800, "Dokumen test")
+    c.save()
+    return buf.getvalue()
+
+
+REAL_PDF = _real_pdf_bytes()
+
+
 @pytest.fixture(scope="module")
 def client() -> TestClient:
     reset_rate_limiter()
@@ -96,7 +112,7 @@ def _upload(
     client: TestClient,
     token: str,
     title: str = "Kontrak K-1",
-    content: bytes = FAKE_PDF,
+    content: bytes = REAL_PDF,
     filename: str = "kontrak.pdf",
     metadata: str = '{"no": "K-1"}',
 ) -> dict:
@@ -120,6 +136,11 @@ def test_upload_dan_validasi(client: TestClient, users: dict) -> None:
 
     bukan_pdf = _upload(client, users["t_org"], filename="a.txt", content=b"hello")
     assert bukan_pdf.status_code == 400
+
+    # PDF rusak (magic OK, isi tak terparse) ditolak saat upload, bukan saat approve.
+    junk = _upload(client, users["t_org"], content=b"%PDF-1.4\nsampah" + b"x" * 100)
+    assert junk.status_code == 400
+    assert junk.json()["error"]["code"] == "INVALID_PDF"
 
     meta_salah = _upload(client, users["t_org"], metadata="bukan-json")
     assert meta_salah.status_code == 400
@@ -247,3 +268,62 @@ def test_superadmin_global_bisa_akses_dokumen_dan_pending(client: TestClient) ->
         )
     finally:
         _cleanup_user(email)
+
+
+def test_download_original_signed_dan_guard(client: TestClient, users: dict) -> None:
+    doc_id = _upload(client, users["t_org"], title="Unduh1").json()["id"]
+    h_org = {"Authorization": f"Bearer {users['t_org']}"}
+    h_sign = {"Authorization": f"Bearer {users['t_signer']}"}
+
+    ori = client.get(f"/api/v1/documents/{doc_id}/download", headers=h_org)
+    assert ori.status_code == 200, ori.text
+    assert ori.headers["content-type"] == "application/pdf"
+    assert ori.content.startswith(b"%PDF")
+
+    # kind salah -> 400; signed belum ada -> 404.
+    assert (
+        client.get(f"/api/v1/documents/{doc_id}/download?kind=aneh", headers=h_org).status_code
+        == 400
+    )
+    assert (
+        client.get(f"/api/v1/documents/{doc_id}/download?kind=signed", headers=h_org).status_code
+        == 404
+    )
+
+    # Signer asing + anonim ditolak (404 agar tidak bocor).
+    assert client.get(f"/api/v1/documents/{doc_id}/download", headers=h_sign).status_code == 404
+    assert client.get(f"/api/v1/documents/{doc_id}/download").status_code == 401
+
+
+def test_qr_placements_simpan_validasi(client: TestClient, users: dict) -> None:
+    doc_id = _upload(client, users["t_org"], title="QRPlace1").json()["id"]
+    h_org = {"Authorization": f"Bearer {users['t_org']}"}
+    h_sign = {"Authorization": f"Bearer {users['t_signer']}"}
+
+    det = client.get(f"/api/v1/documents/{doc_id}", headers=h_org).json()
+    assert det["pageCount"] >= 1 and det["qrPlacements"] == []
+
+    ok = client.put(
+        f"/api/v1/documents/{doc_id}/qr-placements",
+        json={"placements": [{"page": 1, "x": 0.7, "y": 0.8, "size": 0.15}]},
+        headers=h_org,
+    )
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["qrPlacements"] == [{"page": 1, "x": 0.7, "y": 0.8, "size": 0.15}]
+
+    bad = client.put(
+        f"/api/v1/documents/{doc_id}/qr-placements",
+        json={"placements": [{"page": 99, "x": 2, "y": -1, "size": 0.001}]},
+        headers=h_org,
+    )
+    assert bad.status_code == 400
+
+    # Signer tidak boleh atur.
+    assert (
+        client.put(
+            f"/api/v1/documents/{doc_id}/qr-placements",
+            json={"placements": []},
+            headers=h_sign,
+        ).status_code
+        == 403
+    )

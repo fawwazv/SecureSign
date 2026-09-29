@@ -7,8 +7,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Request
 from prisma import Prisma
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_role
 from app.core.exceptions import AppError
+from app.core.pagination import parse_pagination
 from app.models.prisma_client import get_db
 from app.schemas.auth import CompleteProfileRequest
 from app.schemas.user import UserResponse, to_user_response
@@ -26,6 +27,33 @@ async def get_me(
     if user is None:
         raise AppError("UNAUTHORIZED", "Akun tidak ditemukan.", status=401)
     return to_user_response(user)
+
+
+@router.get("/users", response_model=dict)
+async def list_users(
+    _admin: Annotated[dict[str, Any], Depends(require_role("ORG_ADMIN", "SUPER_ADMIN"))],
+    db: Annotated[Prisma, Depends(get_db)],
+    page: int = 1,
+    limit: int = 20,
+    role: str | None = None,
+):
+    """Daftar user (mis. pilih Signer). Hanya field aman, tanpa hash/token."""
+    page, limit = parse_pagination(page, limit)
+    where: dict[str, Any] = {}
+    if role is not None:
+        if role not in ("SUPER_ADMIN", "ORG_ADMIN", "SIGNER", "VERIFIER"):
+            raise AppError("INVALID_ROLE", "Role tidak dikenal.", status=400)
+        where["role"] = role
+    total = await db.user.count(where=where)
+    users = await db.user.find_many(
+        where=where, order={"createdAt": "desc"}, skip=(page - 1) * limit, take=limit
+    )
+    return {
+        "data": [to_user_response(u) for u in users],
+        "page": page,
+        "limit": limit,
+        "total": total,
+    }
 
 
 @router.patch(

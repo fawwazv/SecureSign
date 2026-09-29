@@ -16,12 +16,15 @@ class DocumentResponse(BaseModel):
     metadata: dict[str, Any] = {}
     status: str
     version: int
+    page_count: int = Field(default=1, alias="pageCount")
+    qr_placements: list[dict[str, Any]] = Field(default_factory=list, alias="qrPlacements")
     created_at: str = Field(alias="createdAt")
     updated_at: str = Field(alias="updatedAt")
 
 
 def to_document_response(doc: object) -> dict:
     meta = doc.metadata  # type: ignore[attr-defined]
+    placements = getattr(doc, "qrPlacements", []) or []
     return DocumentResponse(
         id=doc.id,  # type: ignore[attr-defined]
         title=doc.title,  # type: ignore[attr-defined]
@@ -31,6 +34,8 @@ def to_document_response(doc: object) -> dict:
         metadata=dict(meta) if isinstance(meta, dict) else {},
         status=str(doc.status),  # type: ignore[attr-defined]
         version=doc.version,  # type: ignore[attr-defined]
+        pageCount=int(getattr(doc, "pageCount", 1) or 1),
+        qrPlacements=list(placements) if isinstance(placements, list) else [],
         createdAt=str(doc.createdAt),  # type: ignore[attr-defined]
         updatedAt=str(doc.updatedAt),  # type: ignore[attr-defined]
     ).model_dump(by_alias=True, mode="json")

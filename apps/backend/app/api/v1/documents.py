@@ -7,6 +7,7 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi.responses import Response
 from prisma import Json, Prisma
 
 from app.api.deps import get_current_user, require_role
@@ -21,7 +22,7 @@ from app.schemas.document import (
 from app.services.audit_service import log_action
 from app.services.notification_service import notify
 from app.services.pdf_service import validate_pdf
-from app.services.storage_service import upload_file
+from app.services.storage_service import download_file, upload_file
 
 router = APIRouter(tags=["documents"])
 
@@ -38,7 +39,7 @@ async def upload_document(
     metadata: Annotated[str, Form()] = "{}",
 ):
     content = await file.read()
-    file_hash = validate_pdf(content, file.filename or "dokumen.pdf")
+    file_hash, page_count = validate_pdf(content, file.filename or "dokumen.pdf")
     try:
         meta = json.loads(metadata) if metadata else {}
     except ValueError:
@@ -58,6 +59,7 @@ async def upload_document(
             "storagePath": path,
             "fileHash": file_hash,
             "metadata": Json(meta),
+            "pageCount": page_count,
             "status": "DRAFT",
         }
     )
@@ -97,6 +99,12 @@ async def get_document(
     current: Annotated[dict[str, Any], Depends(get_current_user)],
     db: Annotated[Prisma, Depends(get_db)],
 ):
+    doc = await _get_allowed_document(db, id, current)
+    return to_document_response(doc)
+
+
+async def _get_allowed_document(db: Prisma, id: str, current: dict[str, Any]) -> Any:
+    """Load dokumen + cek akses (uploader / signer ter-assign / superadmin)."""
     doc = await db.document.find_unique(where={"id": id})
     if doc is None:
         raise AppError("NOT_FOUND", "Dokumen tidak ditemukan.", status=404)
@@ -106,7 +114,81 @@ async def get_document(
         allowed = req is not None
     if not allowed:
         raise AppError("NOT_FOUND", "Dokumen tidak ditemukan.", status=404)
-    return to_document_response(doc)
+    return doc
+
+
+@router.get("/documents/{id}/download")
+async def download_document(
+    id: str,
+    current: Annotated[dict[str, Any], Depends(get_current_user)],
+    db: Annotated[Prisma, Depends(get_db)],
+    kind: str = "original",
+):
+    """Unduh PDF asli / bertanda tangan. Privat: hanya pihak berhak."""
+    if kind not in ("original", "signed"):
+        raise AppError("INVALID_KIND", "kind harus 'original' atau 'signed'.", status=400)
+    doc = await _get_allowed_document(db, id, current)
+    if kind == "original":
+        path = doc.storagePath
+    else:
+        sigs = await db.signature.find_many(
+            where={"documentId": id}, order={"createdAt": "desc"}, take=1
+        )
+        if not sigs or not sigs[0].signedPdfPath:
+            raise AppError("NOT_SIGNED_YET", "Dokumen belum ditandatangani.", status=404)
+        path = sigs[0].signedPdfPath
+    try:
+        content = download_file(path)
+    except Exception as exc:
+        raise AppError("STORAGE_ERROR", "Gagal mengunduh file.", status=500) from exc
+    safe_title = "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in doc.title)[:80]
+    return Response(
+        content,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{safe_title}.pdf"'},
+    )
+
+
+@router.put("/documents/{id}/qr-placements", response_model=dict)
+async def save_qr_placements(
+    id: str,
+    payload: dict[str, Any],
+    user: OrgOnly,
+    db: Annotated[Prisma, Depends(get_db)],
+):
+    """Simpan posisi QR (fraksi 0..1, origin kiri-atas). Hanya pemilik + DRAFT."""
+    doc = await db.document.find_unique(where={"id": id})
+    if doc is None or doc.uploaderId != user["id"]:
+        raise AppError("NOT_FOUND", "Dokumen tidak ditemukan.", status=404)
+    if doc.status != "DRAFT":
+        raise AppError("NOT_DRAFT", "Posisi QR hanya bisa diubah saat DRAFT.", status=409)
+    placements = payload.get("placements", [])
+    if not isinstance(placements, list) or len(placements) > 10:
+        raise AppError("INVALID_PLACEMENTS", "placements harus list (maks 10).", status=400)
+    clean: list[dict[str, Any]] = []
+    for p in placements:
+        if not isinstance(p, dict):
+            raise AppError("INVALID_PLACEMENTS", "Tiap placement harus object.", status=400)
+        try:
+            page = int(p.get("page", 1))
+            x, y, size = float(p.get("x", 0)), float(p.get("y", 0)), float(p.get("size", 0.15))
+        except (TypeError, ValueError):
+            raise AppError("INVALID_PLACEMENTS", "page/x/y/size harus angka.", status=400) from None
+        if page < 1 or page > doc.pageCount:
+            raise AppError("INVALID_PLACEMENTS", f"page harus 1..{doc.pageCount}.", status=400)
+        if not (0 <= x <= 1 and 0 <= y <= 1) or not (0.02 <= size <= 0.8):
+            raise AppError("INVALID_PLACEMENTS", "x/y 0..1, size 0.02..0.8.", status=400)
+        clean.append({"page": page, "x": x, "y": y, "size": size})
+    updated = await db.document.update(where={"id": id}, data={"qrPlacements": Json(clean)})
+    await log_action(
+        db,
+        "QR_PLACE",
+        actor_id=user["id"],
+        entity="document",
+        entity_id=id,
+        details={"count": len(clean)},
+    )
+    return to_document_response(updated)
 
 
 @router.post(
