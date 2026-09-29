@@ -52,6 +52,7 @@ describe('authStore Google + onboarding (FE1-4)', () => {
         role: 'SIGNER',
         emailVerified: true,
         createdAt: '2026-09-28T00:00:00Z',
+        authProvider: 'GOOGLE',
         profileCompleted: false,
       },
       tokens: { accessToken: 'a', refreshToken: 'r', expiresIn: 900 },

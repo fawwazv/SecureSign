@@ -11,6 +11,8 @@ const doc: DocumentItem = {
   metadata: {},
   status: 'PENDING',
   version: 1,
+  pageCount: 1,
+  qrPlacements: [],
   createdAt: '2026-09-27T10:00:00Z',
   updatedAt: '2026-09-27T10:00:00Z',
 }

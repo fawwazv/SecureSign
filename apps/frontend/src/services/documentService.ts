@@ -1,5 +1,5 @@
 import { apiClient } from '@/services/apiClient'
-import type { Paginated } from '@/types/api'
+import type { Paginated, Role } from '@/types/api'
 
 /**
  * Tipe lokal FE2 (cermin openapi.yaml, tanpa menyentuh src/types/api.ts milik FE1).
@@ -18,6 +18,8 @@ export interface DocumentItem {
   metadata: Record<string, any>
   status: DocumentStatus
   version: number
+  pageCount: number
+  qrPlacements: { page: number; x: number; y: number; size: number }[]
   createdAt: string
   updatedAt: string
 }
@@ -92,15 +94,38 @@ export interface BatchApproveResult {
 const MAX_PDF_BYTES = 25 * 1024 * 1024
 
 /**
- * URL pratinjau PDF untuk <iframe>.
- * Kontrak OpenAPI v0.1 belum mendefinisikan endpoint download/preview
- * (Document hanya membawa storagePath) — helper ini memakai konvensi
- * `/documents/{id}/preview` agar satu titik yang diubah saat BE
- * menerbitkan endpoint/signed-URL resmi. Lihat koordinasi FE2→BE.
+ * Unduh PDF asli / bertanda tangan sebagai Blob (auth via interceptor).
+ * Iframe tidak bisa membawa header Authorization, jadi unduhan lewat
+ * apiClient lalu dibuat object URL — file tetap privat, tanpa token di URL.
  */
-export function previewUrlFor(documentId: string): string {
-  const base = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1'
-  return `${base}/documents/${documentId}/preview`
+export async function downloadDocumentBlob(
+  documentId: string,
+  kind: 'original' | 'signed' = 'original',
+): Promise<Blob> {
+  const { data } = await apiClient.get<Blob>(`/documents/${documentId}/download`, {
+    params: { kind },
+    responseType: 'blob',
+  })
+  return data
+}
+
+/** Simpan posisi QR (fraksi 0..1). Hanya pemilik + DRAFT. */
+export async function saveQrPlacements(
+  documentId: string,
+  placements: { page: number; x: number; y: number; size: number }[],
+) {
+  const { data } = await apiClient.put(`/documents/${documentId}/qr-placements`, { placements })
+  return data
+}
+
+/** Daftar user untuk dropdown (mis. pilih Signer). Butuh Org Admin / Super Admin. */
+export async function listUsers(params: { role?: string; page?: number; limit?: number } = {}) {
+  const { data } = await apiClient.get<
+    Paginated<{ id: string; fullName: string; email: string; organization: string; role: Role }>
+  >('/users', {
+    params: { page: params.page ?? 1, limit: params.limit ?? 100, ...(params.role ? { role: params.role } : {}) },
+  })
+  return data
 }
 
 export function assertPdfFile(file: File): void {
@@ -187,6 +212,11 @@ export const documentService = {
 
   async listKeys() {
     const { data } = await apiClient.get<{ data: KeyPairItem[] }>('/keys')
+    return data
+  },
+
+  async generateKeyPair(algorithm: 'RSA_PSS_2048' | 'ECDSA_P256' | 'ED25519') {
+    const { data } = await apiClient.post<KeyPairItem>('/keys/generate', { algorithm })
     return data
   },
 

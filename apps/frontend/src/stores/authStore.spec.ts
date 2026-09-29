@@ -27,6 +27,8 @@ const resp: LoginResponse = {
     organization: 'PT Maju',
     role: 'ORG_ADMIN',
     emailVerified: true,
+    authProvider: 'EMAIL',
+    profileCompleted: true,
     createdAt: '2026-09-27T10:00:00Z',
   },
   tokens: { accessToken: 'acc', refreshToken: 'ref', expiresIn: 900 },

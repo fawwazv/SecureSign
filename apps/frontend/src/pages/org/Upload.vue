@@ -35,7 +35,22 @@
 
     <Modal :open="metaOpen" title="Metadata dokumen" @close="metaOpen = false">
       <div class="flex flex-col gap-4">
-        <Input id="meta-json" v-model="metadata" label="Metadata JSON (ikut ditandatangani)" hint='cth. {"departemen":"Legal","nomor":"001/IX/2026"}' />
+        <p class="text-xs text-slate-500">
+          Isi pasangan nama–nilai di bawah (ikut ditandatangani). Kosongkan bila tidak perlu.
+        </p>
+        <div v-for="(row, i) in metaRows" :key="row.id" class="flex items-start gap-2">
+          <Input :id="`meta-key-${i}`" v-model="row.key" label="Nama field" placeholder="cth. departemen" />
+          <Input :id="`meta-val-${i}`" v-model="row.value" label="Nilai" placeholder="cth. Legal" />
+          <Button variant="ghost" class="mt-6 shrink-0" aria-label="Hapus baris" @click="removeMetaRow(i)">
+            ✕
+          </Button>
+        </div>
+        <div>
+          <Button variant="secondary" @click="addMetaRow">+ Tambah field</Button>
+        </div>
+        <p v-if="metaPreview" class="rounded-md bg-slate-50 p-2 font-mono text-xs text-slate-600">
+          {{ metaPreview }}
+        </p>
         <p v-if="metaError" role="alert" class="text-xs text-[#B3261E]">{{ metaError }}</p>
         <div class="flex justify-end gap-2">
           <Button variant="ghost" @click="metaOpen = false">Batal</Button>
@@ -47,7 +62,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import Alert from '@/components/ui/Alert.vue'
 import Button from '@/components/ui/Button.vue'
@@ -64,10 +79,33 @@ const file = ref<File | null>(null)
 const fileError = ref('')
 const title = ref('')
 const description = ref('')
-const metadata = ref('')
+const metaRows = reactive<{ id: number; key: string; value: string }[]>([])
+let metaSeq = 0
 const metaError = ref('')
 const metaOpen = ref(false)
 const success = ref(false)
+
+const metaObject = computed(() => {
+  const obj: Record<string, string> = {}
+  for (const row of metaRows) {
+    const k = row.key.trim()
+    if (k) obj[k] = row.value
+  }
+  return obj
+})
+
+const metaPreview = computed(() => {
+  const keys = Object.keys(metaObject.value)
+  return keys.length ? JSON.stringify(metaObject.value) : ''
+})
+
+function addMetaRow() {
+  metaRows.push({ id: ++metaSeq, key: '', value: '' })
+}
+
+function removeMetaRow(i: number) {
+  metaRows.splice(i, 1)
+}
 
 const canContinue = computed(() => !!file.value && title.value.trim().length > 0 && !fileError.value)
 
@@ -101,13 +139,10 @@ function openMetadata() {
 async function submit() {
   metaError.value = ''
   success.value = false
-  if (metadata.value.trim()) {
-    try {
-      JSON.parse(metadata.value)
-    } catch {
-      metaError.value = 'Metadata harus JSON valid.'
-      return
-    }
+  const keys = metaRows.map((r) => r.key.trim()).filter(Boolean)
+  if (new Set(keys).size !== keys.length) {
+    metaError.value = 'Nama field tidak boleh ganda.'
+    return
   }
   if (!file.value) return
   try {
@@ -115,7 +150,7 @@ async function submit() {
       file: file.value,
       title: title.value.trim(),
       description: description.value.trim() || undefined,
-      metadata: metadata.value.trim() || undefined,
+      metadata: metaPreview.value || undefined,
     })
     metaOpen.value = false
     success.value = true
