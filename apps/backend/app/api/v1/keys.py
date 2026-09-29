@@ -10,7 +10,8 @@ from prisma import Prisma
 
 from app.api.deps import require_role
 from app.core.exceptions import AppError
-from app.crypto.key_manager import generate_keypair
+from app.crypto.key_manager import decrypt_private, generate_keypair
+from app.crypto.x509 import issue_self_signed
 from app.models.prisma_client import get_db
 from app.schemas.key import GenerateKeyRequest, KeyPairResponse, to_key_response
 
@@ -32,6 +33,20 @@ async def generate_key(
         public_pem, enc_priv, nonce = generate_keypair(payload.algorithm)
     except ValueError as exc:
         raise AppError("UNSUPPORTED_ALGORITHM", str(exc), status=400) from exc
+    # Sertifikat self-signed untuk PAdES (RSA/ECDSA saja; Ed25519 -> None).
+    certificate: str | None = None
+    if payload.algorithm in ("RSA_PSS_2048", "ECDSA_P256"):
+        owner = await db.user.find_unique(where={"id": user["id"]})
+        try:
+            certificate = issue_self_signed(
+                decrypt_private(enc_priv, nonce),
+                common_name=(owner.fullName if owner else "SignVault User"),
+                email=(owner.email if owner else "unknown@signvault.dev"),
+            )
+        except Exception as exc:
+            raise AppError(
+                "CERT_ISSUE_FAILED", "Gagal menerbitkan sertifikat.", status=500
+            ) from exc
     key = await db.keypair.create(
         data={
             "ownerId": user["id"],
@@ -39,6 +54,7 @@ async def generate_key(
             "publicKey": public_pem,
             "encryptedPrivateKey": enc_priv,
             "privateKeyNonce": nonce,
+            "certificate": certificate,
         }
     )
     return to_key_response(key)

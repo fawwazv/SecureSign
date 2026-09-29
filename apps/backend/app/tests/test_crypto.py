@@ -184,6 +184,29 @@ def test_keys_api_rbac_dan_revoke(client: TestClient) -> None:
         lst = client.get("/api/v1/keys", headers={"Authorization": f"Bearer {t_signer}"})
         assert lst.status_code == 200 and len(lst.json()["data"]) == 1
 
+        # RSA generate -> sertifikat self-signed tersimpan & cocok dengan public key.
+        gen_rsa = client.post(
+            "/api/v1/keys/generate",
+            json={"algorithm": "RSA_PSS_2048"},
+            headers={"Authorization": f"Bearer {t_signer}"},
+        )
+        assert gen_rsa.status_code == 201, gen_rsa.text
+        rsa_id = gen_rsa.json()["id"]
+
+        async def _cert_ok() -> bool:
+            from app.crypto.x509 import cert_matches_key
+
+            db = Prisma()
+            await db.connect()
+            try:
+                row = await db.keypair.find_unique(where={"id": rsa_id})
+                assert row and row.certificate
+                return cert_matches_key(row.certificate, row.publicKey.encode())
+            finally:
+                await db.disconnect()
+
+        assert asyncio.new_event_loop().run_until_complete(_cert_ok())
+
         # Signer tidak boleh revoke.
         assert (
             client.post(
