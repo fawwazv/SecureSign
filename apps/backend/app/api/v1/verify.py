@@ -27,7 +27,7 @@ from app.services.storage_service import download_file
 
 router = APIRouter(tags=["verify"])
 
-AuditorOnly = Annotated[dict[str, Any], Depends(require_role("SUPER_ADMIN", "ORG_ADMIN"))]
+AuditorOnly = Annotated[dict[str, Any], Depends(require_role("SUPER_ADMIN", "SEKRETARIAT"))]
 
 
 def _invalid(reason: str) -> dict[str, Any]:
@@ -131,22 +131,11 @@ async def verify_upload(
         raise AppError("INVALID_PDF", "File harus PDF valid max 25 MB.", status=400)
     digest = sha256_hex(content)
 
-    # 1. File = PDF asli -> cocokkan signedHash + verifikasi kripto.
-    candidates = await db.signature.find_many(where={"signedHash": digest}, take=10)
-    for sig in candidates:
-        ok, _ = await _crypto_valid(db, sig)
-        if ok:
-            await log_action(
-                db,
-                "VERIFY",
-                entity="signature",
-                entity_id=sig.id,
-                details={"method": "upload-original", "result": "VALID"},
-            )
-            return await _valid_result(db, sig)
-
-    # 2. File = PDF bertanda (hash berbeda) -> cocokkan byte file signed.
+    # 1. File = PDF bertanda (wajib mengandung QR) -> cocokkan byte file signed.
+    #    Urutan ini penting: hash file asli (signedHash) juga cocok untuk file
+    #    yang belum ditempeli QR, jadi file asli TIDAK BOLEH dinyatakan VALID.
     recent = await db.signature.find_many(order={"createdAt": "desc"}, take=50)
+    signed_available = False
     for sig in recent:
         if not sig.signedPdfPath:
             continue
@@ -154,17 +143,38 @@ async def verify_upload(
             signed_bytes = download_file(sig.signedPdfPath)
         except Exception:  # noqa: BLE001, S112 — file hilang = lewati kandidat ini
             continue
-        if sha256_hex(signed_bytes) == digest:
-            ok, _ = await _crypto_valid(db, sig)
-            if ok:
-                await log_action(
-                    db,
-                    "VERIFY",
-                    entity="signature",
-                    entity_id=sig.id,
-                    details={"method": "upload-signed", "result": "VALID"},
-                )
-                return await _valid_result(db, sig)
+        signed_available = True
+        if sha256_hex(signed_bytes) != digest:
+            continue
+        ok, reason = await _crypto_valid(db, sig)
+        if ok:
+            await log_action(
+                db,
+                "VERIFY",
+                entity="signature",
+                entity_id=sig.id,
+                details={"method": "upload-signed", "result": "VALID"},
+            )
+            return await _valid_result(db, sig)
+        await log_action(
+            db,
+            "VERIFY",
+            entity="signature",
+            entity_id=sig.id,
+            details={"method": "upload-signed", "result": "INVALID"},
+        )
+        return _invalid(reason or "Tanda tangan tidak valid (dokumen mungkin diubah).")
+
+    # 2. File = PDF asli (hash cocok dengan signedHash) tapi bukan file bertanda
+    #    -> TIDAK VALID: QR tidak ada / dokumen belum ditandatangani.
+    candidates = await db.signature.find_many(where={"signedHash": digest}, take=10)
+    if candidates:
+        if not signed_available:
+            reason = "File pembanding bertanda tidak ditemukan di penyimpanan."
+        else:
+            reason = "Dokumen belum ditandatangani (QR-code tidak ada pada file ini)."
+        await log_action(db, "VERIFY", details={"method": "upload-original", "result": "INVALID"})
+        return _invalid(reason)
 
     await log_action(db, "VERIFY", details={"method": "upload", "result": "INVALID"})
     return _invalid("Tidak ada tanda tangan yang cocok (dokumen mungkin diubah).")

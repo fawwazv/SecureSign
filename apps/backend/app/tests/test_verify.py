@@ -119,7 +119,7 @@ def env(client: TestClient) -> dict:
     org = f"v+{uuid.uuid4().hex[:10]}@example.com"
     signer = f"v+{uuid.uuid4().hex[:10]}@example.com"
     admin = f"v+{uuid.uuid4().hex[:10]}@example.com"
-    _make_user(org, "ORG_ADMIN")
+    _make_user(org, "SEKRETARIAT")
     _make_user(signer, "SIGNER")
     _make_user(admin, "SUPER_ADMIN")
     data = {
@@ -209,15 +209,24 @@ def test_verify_fake_qr_invalid(client: TestClient, env: dict) -> None:
     assert res.json()["status"] == "INVALID"
 
 
-def test_verify_upload_original_dan_signed(client: TestClient, env: dict) -> None:
+def test_verify_upload_signed_valid_original_invalid(client: TestClient, env: dict) -> None:
+    """File bertanda -> VALID; file asli tanpa QR (hash sama) -> INVALID."""
     _, original, signed = _signed(client, env, "Upload1")
-    for content in (original, signed):
-        res = client.post(
-            "/api/v1/verify/upload",
-            files={"file": ("dok.pdf", io.BytesIO(content), "application/pdf")},
-        )
-        assert res.status_code == 200, res.text
-        assert res.json()["status"] == "VALID"
+    res = client.post(
+        "/api/v1/verify/upload",
+        files={"file": ("dok.pdf", io.BytesIO(signed), "application/pdf")},
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["status"] == "VALID"
+
+    res = client.post(
+        "/api/v1/verify/upload",
+        files={"file": ("dok.pdf", io.BytesIO(original), "application/pdf")},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["status"] == "INVALID"
+    assert "QR" in body["reason"] or "ditandatangani" in body["reason"].lower()
 
 
 def test_verify_tamper_satu_byte_invalid(client: TestClient, env: dict) -> None:
@@ -350,14 +359,14 @@ def test_perf_kripto_30x_per_algoritma() -> None:
 
 
 def test_perf_api_verify(client: TestClient, env: dict) -> None:
-    sig_id, original, _ = _signed(client, env, "Perf1")
+    sig_id, _, signed = _signed(client, env, "Perf1")
     for label, fn in (
         ("GET sig", lambda: client.get(f"/api/v1/verify/{sig_id}")),
         (
             "POST upload",
             lambda: client.post(
                 "/api/v1/verify/upload",
-                files={"file": ("dok.pdf", io.BytesIO(original), "application/pdf")},
+                files={"file": ("dok.pdf", io.BytesIO(signed), "application/pdf")},
             ),
         ),
     ):
