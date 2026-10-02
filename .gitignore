@@ -19,3 +19,7 @@ apps/backend/.pytest_cache/
 !.env.example
 **/.env.example
 !**/.env.example
+
+# Dokumen internal tim — tidak dipush ke GitHub
+/prd*.md
+/update-*.md
