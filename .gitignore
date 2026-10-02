@@ -23,3 +23,5 @@ apps/backend/.pytest_cache/
 # Dokumen internal tim — tidak dipush ke GitHub
 /prd*.md
 /update-*.md
+/design.md
+/dashboard sekertariat.jpeg
