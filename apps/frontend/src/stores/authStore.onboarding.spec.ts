@@ -49,9 +49,9 @@ const payload: CompleteProfilePayload = {
 describe('completeProfile me-refresh token (anti token basi)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    localStorage.clear()
+    sessionStorage.clear()
     vi.clearAllMocks()
-    localStorage.setItem('sv:refresh_token', 'ref-lama')
+    sessionStorage.setItem('sv:refresh_token', 'ref-lama')
   })
 
   it('sukses PATCH -> refresh terpanggil -> token baru tersimpan', async () => {
@@ -65,7 +65,7 @@ describe('completeProfile me-refresh token (anti token basi)', () => {
     const out = await store.completeProfile(payload)
     expect(mockedRefresh).toHaveBeenCalledWith('ref-lama')
     expect(out.role).toBe('SEKRETARIAT')
-    expect(localStorage.getItem('sv:access_token')).toBe('acc-baru')
+    expect(sessionStorage.getItem('sv:access_token')).toBe('acc-baru')
     expect(store.profileCompleted).toBe(true)
   })
 

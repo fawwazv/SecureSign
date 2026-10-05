@@ -1,7 +1,5 @@
 import { computed } from 'vue'
-
-const ACCESS_KEY = 'sv:access_token'
-const REFRESH_KEY = 'sv:refresh_token'
+import { SESSION_KEYS, sessionGet, sessionRemove, sessionSet } from '@/services/sessionStore'
 
 function decodePayload(token: string): Record<string, unknown> | null {
   try {
@@ -16,11 +14,7 @@ function decodePayload(token: string): Record<string, unknown> | null {
 /** Composable JWT (FE1): baca klaim & cek kedaluwarsa tanpa verifikasi signature. */
 export function useJWT() {
   const getAccessToken = () => {
-    try {
-      return localStorage.getItem(ACCESS_KEY)
-    } catch {
-      return null
-    }
+    return sessionGet(SESSION_KEYS.accessToken)
   }
 
   const claims = computed(() => {
@@ -35,13 +29,13 @@ export function useJWT() {
   })
 
   function setTokens(accessToken: string, refreshToken: string) {
-    localStorage.setItem(ACCESS_KEY, accessToken)
-    localStorage.setItem(REFRESH_KEY, refreshToken)
+    sessionSet(SESSION_KEYS.accessToken, accessToken)
+    sessionSet(SESSION_KEYS.refreshToken, refreshToken)
   }
 
   function clearTokens() {
-    localStorage.removeItem(ACCESS_KEY)
-    localStorage.removeItem(REFRESH_KEY)
+    sessionRemove(SESSION_KEYS.accessToken)
+    sessionRemove(SESSION_KEYS.refreshToken)
   }
 
   return { getAccessToken, claims, isExpired, setTokens, clearTokens }

@@ -49,7 +49,7 @@ function apiError(code: string, message: string, status: number): AxiosError<Api
 describe('authStore ↔ authService (kontrak BE)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    localStorage.clear()
+    sessionStorage.clear()
     vi.clearAllMocks()
   })
 
@@ -59,8 +59,8 @@ describe('authStore ↔ authService (kontrak BE)', () => {
     const user = await store.login('sinta@pt.id', 'Rahasia123')
     expect(user.email).toBe('sinta@pt.id')
     expect(store.isAuthenticated).toBe(true)
-    expect(localStorage.getItem('sv:access_token')).toBe('acc')
-    expect(localStorage.getItem('sv:refresh_token')).toBe('ref')
+    expect(sessionStorage.getItem('sv:access_token')).toBe('acc')
+    expect(sessionStorage.getItem('sv:refresh_token')).toBe('ref')
   })
 
   it('401 INVALID_CREDENTIALS menampilkan pesan Ramah', async () => {

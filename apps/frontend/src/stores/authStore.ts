@@ -1,6 +1,12 @@
 import { defineStore } from 'pinia'
 import { authService } from '@/services/authService'
 import { toApiCode, toApiMessage } from '@/services/apiClient'
+import {
+  SESSION_KEYS,
+  sessionClearAuth,
+  sessionGet,
+  sessionSet,
+} from '@/services/sessionStore'
 import { useJWT } from '@/composables/useJWT'
 import { completeProfileErrorMessage, loginErrorMessage } from '@/utils/validators'
 import type { CompleteProfilePayload, LoginResponse, RegisterPayload, User } from '@/types/api'
@@ -14,10 +20,18 @@ interface AuthState {
 
 function readUser(): User | null {
   try {
-    const raw = localStorage.getItem('sv:user')
+    const raw = sessionGet(SESSION_KEYS.user)
     return raw ? (JSON.parse(raw) as User) : null
   } catch {
     return null
+  }
+}
+
+function writeUser(user: User): void {
+  try {
+    sessionSet(SESSION_KEYS.user, JSON.stringify(user))
+  } catch {
+    /* abaikan */
   }
 }
 
@@ -108,11 +122,7 @@ export const useAuthStore = defineStore('auth', {
         this.profileCompleted = resp.profileCompleted
         if (this.user) {
           this.user = { ...this.user, profileCompleted: resp.profileCompleted }
-          try {
-            localStorage.setItem('sv:user', JSON.stringify(this.user))
-          } catch {
-            /* abaikan */
-          }
+          writeUser(this.user)
         }
         return { user: this.user as User, needsOnboarding: this.needsOnboarding }
       } catch (e) {
@@ -132,25 +142,17 @@ export const useAuthStore = defineStore('auth', {
         const user = await authService.completeProfile(payload)
         this.user = { ...user, profileCompleted: true }
         this.profileCompleted = true
-        try {
-          localStorage.setItem('sv:user', JSON.stringify(this.user))
-        } catch {
-          /* abaikan */
-        }
+        writeUser(this.user)
         // Token lama masih membawa role lama -> refresh agar klaim role baru.
         // Gagal refresh = paksa login ulang, jangan biarkan 403 diam-diam.
         try {
-          const rt = localStorage.getItem('sv:refresh_token') ?? undefined
+          const rt = sessionGet(SESSION_KEYS.refreshToken) ?? undefined
           if (!rt) throw new Error('no-refresh-token')
           const refreshed = await authService.refresh(rt)
           this.hydrateFromLoginResponse(refreshed)
           this.user = { ...(this.user as User), profileCompleted: true }
           this.profileCompleted = true
-          try {
-            localStorage.setItem('sv:user', JSON.stringify(this.user))
-          } catch {
-            /* abaikan */
-          }
+          writeUser(this.user as User)
         } catch {
           await this.logout()
           throw new Error('Sesi diperbarui, silakan masuk kembali.')
@@ -176,21 +178,16 @@ export const useAuthStore = defineStore('auth', {
       const user = resp.user as User
       this.user = user
       this.profileCompleted = user.profileCompleted ?? null
-      try {
-        localStorage.setItem('sv:user', JSON.stringify(user))
-      } catch {
-        /* abaikan */
-      }
+      writeUser(user)
     },
 
     async logout() {
       try {
-        await authService.logout(localStorage.getItem('sv:refresh_token') ?? undefined)
+        await authService.logout(sessionGet(SESSION_KEYS.refreshToken) ?? undefined)
       } finally {
         const { clearTokens } = useJWT()
         clearTokens()
-        localStorage.removeItem('sv:user')
-        localStorage.removeItem('sv:google_credential')
+        sessionClearAuth()
         this.user = null
         this.profileCompleted = null
       }

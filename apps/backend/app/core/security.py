@@ -72,6 +72,9 @@ def create_refresh_token(user_id: str, secret: str, expire_days: int) -> str:
         "type": "refresh",
         "exp": _now() + timedelta(days=expire_days),
         "iat": _now(),
+        # jti acak: dua token dalam detik yang sama harus tetap unik
+        # (hash disimpan unique di DB; tanpanya refresh ganda -> 500).
+        "jti": secrets.token_urlsafe(16),
     }
     return jwt.encode(payload, secret, algorithm=ALGORITHM)
 

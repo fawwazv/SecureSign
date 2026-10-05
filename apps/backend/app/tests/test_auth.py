@@ -242,19 +242,28 @@ def test_flow_penuh_register_verify_login_me_refresh_logout(client: TestClient) 
         assert refreshed.status_code == 200, refreshed.text
         new_refresh = refreshed.json()["tokens"]["refreshToken"]
 
-        # Rotation: refresh token lama wajib ditolak.
+        # Rotation + grace window antar-tab: token lama yang baru dirotasi
+        # masih diterima (bukan 401) selama dalam grace window.
         reuse = client.post("/api/v1/auth/refresh", json={"refreshToken": refresh})
-        assert reuse.status_code == 401
+        assert reuse.status_code == 200, reuse.text
+        assert reuse.json()["tokens"]["refreshToken"] != refresh
+        me2 = client.get(
+            "/api/v1/users/me",
+            headers={"Authorization": f"Bearer {reuse.json()['tokens']['accessToken']}"},
+        )
+        assert me2.status_code == 200
 
         logout = client.post(
             "/api/v1/auth/logout",
-            json={"refreshToken": new_refresh},
-            headers={"Authorization": f"Bearer {refreshed.json()['tokens']['accessToken']}"},
+            json={"refreshToken": reuse.json()["tokens"]["refreshToken"]},
+            headers={"Authorization": f"Bearer {reuse.json()['tokens']['accessToken']}"},
         )
         assert logout.status_code == 200
 
-        after_logout = client.post("/api/v1/auth/refresh", json={"refreshToken": new_refresh})
-        assert after_logout.status_code == 401
+        # Logout mematikan seluruh keluarga sesi: semua token lama maupun baru ditolak.
+        for dead in (refresh, new_refresh, reuse.json()["tokens"]["refreshToken"]):
+            after_logout = client.post("/api/v1/auth/refresh", json={"refreshToken": dead})
+            assert after_logout.status_code == 401, dead[:12]
     finally:
         _cleanup(email)
 
@@ -318,3 +327,90 @@ def test_list_users_rbac_dan_filter(client: TestClient) -> None:
     finally:
         _cleanup(org)
         _cleanup(signer)
+
+
+def _login_verified(client: TestClient, email: str) -> dict:
+    """Register -> verifikasi -> login. Return body login (termasuk tokens)."""
+    _register(client, email)
+    token = _token_from_db(email)
+    verify = client.post("/api/v1/auth/verify-email", json={"email": email, "token": token})
+    assert verify.status_code == 200, verify.text
+    login = client.post("/api/v1/auth/login", json={"email": email, "password": "Rahasia123"})
+    assert login.status_code == 200, login.text
+    return login.json()
+
+
+def test_refresh_race_dua_tab_tetap_login(client: TestClient) -> None:
+    """Simulasi dua tab refresh hampir bersamaan: keduanya harus tetap login."""
+    from app.core.security import hash_refresh_token
+
+    email = _email()
+    try:
+        reset_rate_limiter()
+        tokens = _login_verified(client, email)["tokens"]
+        refresh = tokens["refreshToken"]
+
+        first = client.post("/api/v1/auth/refresh", json={"refreshToken": refresh})
+        second = client.post("/api/v1/auth/refresh", json={"refreshToken": refresh})
+        assert first.status_code == 200, first.text
+        assert second.status_code == 200, second.text
+        assert first.json()["tokens"]["refreshToken"] != second.json()["tokens"]["refreshToken"]
+
+        for resp in (first, second):
+            me = client.get(
+                "/api/v1/users/me",
+                headers={"Authorization": f"Bearer {resp.json()['tokens']['accessToken']}"},
+            )
+            assert me.status_code == 200, me.text
+
+        # Token awal kini ter-revoke dengan jejak pengganti (bukan hilang begitu saja).
+        async def _check_chain() -> None:
+            from datetime import UTC, datetime
+
+            db = Prisma()
+            await db.connect()
+            try:
+                row = await db.refreshtoken.find_unique(
+                    where={"tokenHash": hash_refresh_token(refresh)}
+                )
+                assert row is not None and row.revoked and row.replacedBy
+                assert row.revokedAt is not None and row.revokedAt.tzinfo is not None
+                assert (datetime.now(UTC) - row.revokedAt).total_seconds() < 120
+            finally:
+                await db.disconnect()
+
+        asyncio.new_event_loop().run_until_complete(_check_chain())
+    finally:
+        _cleanup(email)
+
+
+def test_refresh_reuse_lewat_grace_ditolak(client: TestClient) -> None:
+    """Reuse token lama setelah grace window habis -> 401 (anti pencurian)."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.core.security import hash_refresh_token
+
+    email = _email()
+    try:
+        reset_rate_limiter()
+        tokens = _login_verified(client, email)["tokens"]
+        refresh = tokens["refreshToken"]
+        rotated = client.post("/api/v1/auth/refresh", json={"refreshToken": refresh})
+        assert rotated.status_code == 200, rotated.text
+
+        async def _backdate() -> None:
+            db = Prisma()
+            await db.connect()
+            try:
+                await db.refreshtoken.update(
+                    where={"tokenHash": hash_refresh_token(refresh)},
+                    data={"revokedAt": datetime.now(UTC) - timedelta(seconds=3600)},
+                )
+            finally:
+                await db.disconnect()
+
+        asyncio.new_event_loop().run_until_complete(_backdate())
+        stale = client.post("/api/v1/auth/refresh", json={"refreshToken": refresh})
+        assert stale.status_code == 401, stale.text
+    finally:
+        _cleanup(email)

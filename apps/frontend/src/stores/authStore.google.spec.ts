@@ -38,7 +38,7 @@ function apiError(code: string, message: string, status: number): AxiosError<Api
 describe('authStore Google + onboarding (FE1-4)', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    localStorage.clear()
+    sessionStorage.clear()
     vi.clearAllMocks()
   })
 
@@ -96,7 +96,7 @@ describe('authStore Google + onboarding (FE1-4)', () => {
       tokens: { accessToken: 'acc-baru', refreshToken: 'ref-baru', expiresIn: 900 },
     })
     const store = useAuthStore()
-    localStorage.setItem('sv:refresh_token', 'ref-lama')
+    sessionStorage.setItem('sv:refresh_token', 'ref-lama')
     const user = await store.completeProfile({
       fullName: 'Sinta',
       organization: 'PT Maju',
@@ -108,7 +108,7 @@ describe('authStore Google + onboarding (FE1-4)', () => {
     expect(store.needsOnboarding).toBe(false)
     expect(store.profileCompleted).toBe(true)
     expect(store.roleHome()).toBe('/org')
-    expect(localStorage.getItem('sv:access_token')).toBe('acc-baru')
+    expect(sessionStorage.getItem('sv:access_token')).toBe('acc-baru')
   })
 
   it('loginWithGoogle gagal memetakan pesan SSO', async () => {

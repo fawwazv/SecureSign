@@ -42,6 +42,10 @@ from app.services.google_auth import verify_google_id_token
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 VERIFY_EXPIRE_HOURS = 24
+# Jendela toleransi reuse refresh token yang baru dirotasi (detik).
+# Dalam jendela ini, tab yang kalah balapan rotasi tetap mendapat sesi baru
+# (bukan 401). Di luar jendela = indikasi pencurian token -> tolak.
+REFRESH_REUSE_GRACE_SECONDS = 30
 
 
 def _now() -> datetime:
@@ -203,6 +207,41 @@ async def login(payload: LoginRequest, request: Request, db: Annotated[Prisma, D
     return {"user": to_user_response(user), "tokens": tokens}
 
 
+async def _follow_refresh_chain(db: Prisma, row: Any, max_hops: int = 5) -> Any | None:
+    """Ikuti rantai replacedBy dari token yang sudah dirotasi.
+
+    Return baris pengganti yang masih berlaku, atau None bila rantai putus /
+    pengganti kedaluwarsa / milik user lain. Membatasi hop agar tak berputar.
+    """
+    current = row
+    for _ in range(max_hops):
+        nxt_hash = getattr(current, "replacedBy", None)
+        if not current.revoked or not nxt_hash:
+            break
+        nxt = await db.refreshtoken.find_unique(where={"tokenHash": nxt_hash})
+        if nxt is None or nxt.userId != current.userId:
+            return None
+        current = nxt
+    if current.revoked or current.expiresAt < _now():
+        return None
+    return current
+
+
+def _reuse_within_grace(row: Any) -> bool:
+    """True bila token ter-revoke akibat rotasi dan masih dalam grace window.
+
+    Tanpa replacedBy (mis. hasil logout) atau revokedAt basi -> False.
+    """
+    if not row.revoked or not getattr(row, "replacedBy", None):
+        return False
+    revoked_at = getattr(row, "revokedAt", None)
+    if revoked_at is None:
+        return False
+    if revoked_at.tzinfo is None:
+        revoked_at = revoked_at.replace(tzinfo=UTC)
+    return (_now() - revoked_at).total_seconds() <= REFRESH_REUSE_GRACE_SECONDS
+
+
 @router.post("/refresh", response_model=LoginResponse, response_model_by_alias=True)
 async def refresh(
     payload: RefreshRequest, request: Request, db: Annotated[Prisma, Depends(get_db)]
@@ -214,14 +253,29 @@ async def refresh(
     row = await db.refreshtoken.find_unique(
         where={"tokenHash": hash_refresh_token(payload.refresh_token)}
     )
+    if row is not None and row.revoked:
+        # Toleransi balapan antar-tab: token lama yang sudah dirotasi masih
+        # diterima selama dalam grace window dan rantai penggantinya valid
+        # (tab yang kalah balapan tetap login, bukan terlempar 401).
+        # Di luar itu (logout / basi / rantai putus) -> 401.
+        if not _reuse_within_grace(row):
+            raise AppError("UNAUTHORIZED", "Refresh token tidak valid.", status=401)
+        row = await _follow_refresh_chain(db, row)
     if row is None or row.revoked or row.expiresAt < _now() or row.userId != claims["sub"]:
         raise AppError("UNAUTHORIZED", "Refresh token tidak valid.", status=401)
     # Rotation: revoke lama, terbitkan pasangan baru.
-    await db.refreshtoken.update(where={"id": row.id}, data={"revoked": True})
     user = await db.user.find_unique(where={"id": row.userId})
     if user is None:
         raise AppError("UNAUTHORIZED", "Akun tidak ditemukan.", status=401)
     tokens = await _issue_token_pair(db, user)
+    await db.refreshtoken.update(
+        where={"id": row.id},
+        data={
+            "revoked": True,
+            "revokedAt": _now(),
+            "replacedBy": hash_refresh_token(tokens["refresh_token"]),
+        },
+    )
     await log_action(
         db,
         "REFRESH",
@@ -243,8 +297,14 @@ async def logout(
     row = await db.refreshtoken.find_unique(
         where={"tokenHash": hash_refresh_token(payload.refresh_token)}
     )
+    # Revoke kepala rantai (bukan hanya token yang disodorkan) agar seluruh
+    # keluarga sesi ikut mati; tanpa replacedBy sehingga grace window tak berlaku.
+    if row is not None and row.revoked:
+        row = await _follow_refresh_chain(db, row)
     if row is not None and not row.revoked:
-        await db.refreshtoken.update(where={"id": row.id}, data={"revoked": True})
+        await db.refreshtoken.update(
+            where={"id": row.id}, data={"revoked": True, "revokedAt": _now(), "replacedBy": None}
+        )
     await log_action(db, "LOGOUT", actor_id=_user["id"], ip_address=_client_ip(request))
     return {"message": "Logout sukses."}
 

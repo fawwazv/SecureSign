@@ -1,5 +1,6 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import type { ApiErrorBody, LoginResponse } from '@/types/api'
+import { SESSION_KEYS, sessionClearAuth, sessionGet, sessionSet } from './sessionStore'
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1',
@@ -10,35 +11,21 @@ export const apiClient = axios.create({
 type RetriableConfig = InternalAxiosRequestConfig & { _retry?: boolean }
 
 function getAccessToken(): string | null {
-  try {
-    return localStorage.getItem('sv:access_token')
-  } catch {
-    return null
-  }
+  return sessionGet(SESSION_KEYS.accessToken)
 }
 
 function getRefreshToken(): string | null {
-  try {
-    return localStorage.getItem('sv:refresh_token')
-  } catch {
-    return null
-  }
+  return sessionGet(SESSION_KEYS.refreshToken)
 }
 
 function persistSession(resp: LoginResponse) {
-  localStorage.setItem('sv:access_token', resp.tokens.accessToken)
-  localStorage.setItem('sv:refresh_token', resp.tokens.refreshToken)
-  localStorage.setItem('sv:user', JSON.stringify(resp.user))
+  sessionSet(SESSION_KEYS.accessToken, resp.tokens.accessToken)
+  sessionSet(SESSION_KEYS.refreshToken, resp.tokens.refreshToken)
+  sessionSet(SESSION_KEYS.user, JSON.stringify(resp.user))
 }
 
 function clearSession() {
-  try {
-    localStorage.removeItem('sv:access_token')
-    localStorage.removeItem('sv:refresh_token')
-    localStorage.removeItem('sv:user')
-  } catch {
-    /* abaikan */
-  }
+  sessionClearAuth()
 }
 
 // Single-flight: banyak request 401 bersamaan hanya memicu 1x refresh.
@@ -82,6 +69,14 @@ apiClient.interceptors.response.use(
     // 401 sekali → coba silent refresh (ikut rotasi BE), lalu ulangi request.
     if (status === 401 && original && !original._retry && !isAuthFlow(url)) {
       original._retry = true
+      // Token mungkin sudah disegarkan alur lain di tab ini (mis. retry
+      // beruntun): jangan refresh ulang bila token kini sudah berbeda.
+      const sentAuth = String(original.headers?.Authorization ?? '')
+      const current = getAccessToken()
+      if (current && sentAuth !== `Bearer ${current}`) {
+        original.headers.Authorization = `Bearer ${current}`
+        return apiClient(original)
+      }
       try {
         const resp = await refreshTokens()
         persistSession(resp)
