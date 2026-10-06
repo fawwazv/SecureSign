@@ -31,7 +31,7 @@
             >
               <option value="" disabled>Pilih key pair…</option>
               <option v-for="k in activeKeys" :key="k.id" :value="k.id">
-                {{ k.algorithm }} — {{ k.id.slice(0, 8) }}…
+                {{ k.algorithm }}
               </option>
             </select>
             <p v-if="!activeKeys.length" class="text-xs text-slate-500">
