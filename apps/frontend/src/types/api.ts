@@ -64,3 +64,4 @@ export interface GoogleLoginResponse {
 
 export type DocumentStatus = components['schemas']['DocumentStatus']
 export type VerifyResult = components['schemas']['VerifyResult']
+export type BenchmarkResult = components['schemas']['BenchmarkResult']

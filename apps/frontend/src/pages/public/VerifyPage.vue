@@ -7,6 +7,44 @@
         hash &amp; signature (F-13 / F-14).
       </p>
 
+      <Card class="mt-4" title="Uji Performa Penandatanganan &amp; Verifikasi">
+        <p class="text-sm text-slate-600">
+          Ukur waktu Sign (Ed25519, termasuk pembangunan kunci baru di tiap iterasi)
+          dan Verifikasi (Hash + Signature) atas hash file PDF. Minimal 30 iterasi.
+        </p>
+        <div class="mt-3 grid gap-3 sm:grid-cols-[1fr_180px]">
+          <div class="flex flex-col gap-1.5">
+            <label for="bench-pdf" class="text-sm font-medium text-slate-800">Upload PDF Uji</label>
+            <input
+              id="bench-pdf" type="file" accept="application/pdf"
+              class="block w-full rounded-md border border-light-blue bg-white p-2 text-sm"
+              @change="onBenchFile"
+            />
+            <p v-if="benchFileName" class="text-sm text-slate-600">Dipilih: {{ benchFileName }}</p>
+          </div>
+          <Input
+            id="bench-iter" :modelValue="String(benchIterations)" type="number" label="Iterasi (min. 30)"
+            :error="benchIterError" @blur="benchTouched = true"
+            @update:modelValue="benchIterations = Number($event) || 0"
+          />
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <Button :loading="benchmarking" :disabled="!canBenchmark" @click="runBench">
+            Uji Performa
+          </Button>
+        </div>
+        <p v-if="benchError" role="alert" class="mt-2 text-xs text-[#B3261E]">{{ benchError }}</p>
+        <Table
+          v-if="benchResult" class="mt-4"
+          :columns="benchCols"
+          :rows="benchRows"
+          :empty-text="''"
+        />
+        <p v-if="benchResult" class="mt-1 text-xs text-slate-500">
+          Waktu proses (milisdetik) — rata-rata {{ benchResult.iterations }} iterasi.
+        </p>
+      </Card>
+
       <Tabs v-model="mode" :tabs="tabs" label="Metode verifikasi" class="mt-6" />
 
       <div v-if="mode === 'upload'" class="sv-card mt-4 p-6">
@@ -120,10 +158,11 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { Html5Qrcode } from 'html5-qrcode'
 import { Alert, Badge, Button, Card, Input, Table, Tabs } from '@/components/ui'
 import { verifyService } from '@/services/authService'
+import { runBenchmark } from '@/services/documentService'
 import { toApiMessage } from '@/services/apiClient'
 import { formatDate } from '@/utils/formatDate'
 import { extractTokenFromQrText, isCameraQrSupported } from '@/utils/qr'
-import type { VerifyResult } from '@/types/api'
+import type { BenchmarkResult, VerifyResult } from '@/types/api'
 
 const tabs = [
   { value: 'upload', label: 'Upload PDF' },
@@ -152,7 +191,68 @@ const defaultReason = computed(() =>
   result.value?.status === 'VALID' ? 'Hash & signature cocok.' : 'Hash / signature / kunci / QR tidak valid.',
 )
 const isMissingQr = computed(() => (result.value?.reason ?? '').includes('QR-code tidak ada'))
-const auditCols = [
+
+// --- Uji performa (benchmark sign + verifikasi, publik tanpa login) ---
+const benchFile = ref<File | null>(null)
+const benchIterations = ref<number>(30)
+const benchTouched = ref(false)
+const benchmarking = ref(false)
+const benchError = ref('')
+const benchResult = ref<BenchmarkResult | null>(null)
+
+const benchFileName = computed(() => benchFile.value?.name ?? '')
+const benchIterError = computed(() => {
+  if (!benchTouched.value) return ''
+  return benchIterations.value >= 30 ? '' : 'Iterasi minimal 30.'
+})
+const canBenchmark = computed(
+  () => !!benchFile.value && benchIterations.value >= 30 && !benchmarking.value,
+)
+const benchCols = [
+  { key: 'operation', label: 'Operasi' },
+  { key: 'avg', label: 'Rata-rata (ms)' },
+  { key: 'min', label: 'Tercepat (ms)' },
+  { key: 'max', label: 'Terlambat (ms)' },
+]
+const benchRows = computed(() => {
+  if (!benchResult.value) return []
+  return (['sign', 'verify'] as const).map((k) => {
+    const s = benchResult.value!.results[k]
+    return {
+      operation: s.operation,
+      avg: s.avgMs.toFixed(2),
+      min: s.minMs.toFixed(2),
+      max: s.maxMs.toFixed(2),
+    }
+  })
+})
+
+function onBenchFile(e: Event) {
+  const f = (e.target as HTMLInputElement).files?.[0] ?? null
+  if (f && f.size > 25 * 1024 * 1024) {
+    benchError.value = 'Ukuran file melebihi 25 MB.'
+    benchFile.value = null
+    return
+  }
+  benchError.value = ''
+  benchResult.value = null
+  benchFile.value = f
+}
+
+async function runBench() {
+  benchTouched.value = true
+  if (!canBenchmark.value || !benchFile.value) return
+  benchmarking.value = true
+  benchError.value = ''
+  try {
+    benchResult.value = await runBenchmark(benchFile.value, benchIterations.value)
+  } catch (e) {
+    benchError.value = toApiMessage(e, 'Uji performa gagal. Coba lagi.')
+    benchResult.value = null
+  } finally {
+    benchmarking.value = false
+  }
+}const auditCols = [
   { key: 'event', label: 'Peristiwa' },
   { key: 'at', label: 'Waktu' },
   { key: 'actor', label: 'Aktor' },

@@ -8,14 +8,16 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from prisma import Prisma
 
 from app.api.deps import require_role
 from app.core.exceptions import AppError
 from app.core.pagination import parse_pagination
+from app.crypto import ed25519
 from app.crypto.canonical import signed_message
 from app.crypto.hashing import sha256_hex
 from app.crypto.key_manager import verify_with
@@ -245,6 +247,57 @@ async def verify_upload(
 
     await log_action(db, "VERIFY", details={"method": "upload", "result": "INVALID"})
     return _invalid("Tidak ada tanda tangan yang cocok (dokumen mungkin diubah).")
+
+
+BENCHMARK_MIN_ITERATIONS = 30
+BENCHMARK_MAX_ITERATIONS = 300
+
+
+def _stats_ms(samples: list[float]) -> dict[str, float]:
+    """Ringkasan avg/min/max dalam milidetik."""
+    ms = [s * 1000.0 for s in samples]
+    return {"avgMs": sum(ms) / len(ms), "minMs": min(ms), "maxMs": max(ms)}
+
+
+@router.post("/verify/benchmark", response_model=dict)
+async def benchmark_upload(
+    file: Annotated[UploadFile, File()],
+    iterations: Annotated[int, Form(ge=BENCHMARK_MIN_ITERATIONS, le=BENCHMARK_MAX_ITERATIONS)] = 30,
+):
+    """Uji performa publik tanpa login: sign + verifikasi Ed25519 atas hash PDF.
+
+    Metodologi (Opsi C): tiap iterasi membangun keypair baru lalu sign
+    (waktu digabung sebagai "Sign"), kemudian verifikasi hash + signature.
+    Berbeda dari test_perf_kripto_30x bawaan yang mengukur sign murni.
+    Tanpa audit log (pengukuran, bukan peristiwa verifikasi).
+    """
+    content = await file.read()
+    if not content or len(content) > MAX_PDF_BYTES or not content.startswith(PDF_MAGIC):
+        raise AppError("INVALID_PDF", "File harus PDF valid max 25 MB.", status=400)
+    message = sha256_hex(content).encode()
+    sign_samples: list[float] = []
+    verify_samples: list[float] = []
+    for _ in range(iterations):
+        start = time.perf_counter()
+        priv_pem, pub_pem = ed25519.generate()
+        signature = ed25519.sign(priv_pem, message)
+        sign_samples.append(time.perf_counter() - start)
+        start = time.perf_counter()
+        _ = sha256_hex(content)
+        valid = ed25519.verify(pub_pem, message, signature)
+        verify_samples.append(time.perf_counter() - start)
+        if not valid:
+            raise AppError("BENCHMARK_FAILED", "Verifikasi internal gagal.", status=500)
+    return {
+        "iterations": iterations,
+        "results": {
+            "sign": {
+                "operation": "Sign (Ed25519, termasuk pembangunan kunci)",
+                **_stats_ms(sign_samples),
+            },
+            "verify": {"operation": "Verifikasi (Hash + Signature)", **_stats_ms(verify_samples)},
+        },
+    }
 
 
 audit_router = APIRouter(tags=["audit-logs"])

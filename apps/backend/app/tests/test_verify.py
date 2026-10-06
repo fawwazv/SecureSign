@@ -309,6 +309,44 @@ def test_verify_upload_acak_invalid(client: TestClient, env: dict) -> None:
     assert res.json()["status"] == "INVALID"
 
 
+def test_benchmark_matriks_avg_min_max(client: TestClient, env: dict) -> None:
+    _ = env
+    pdf = _real_pdf_bytes("bench")
+    res = client.post(
+        "/api/v1/verify/benchmark",
+        files={"file": ("dok.pdf", io.BytesIO(pdf), "application/pdf")},
+        data={"iterations": "30"},
+    )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["iterations"] == 30
+    for key in ("sign", "verify"):
+        stats = body["results"][key]
+        assert stats["operation"]
+        assert stats["minMs"] <= stats["avgMs"] <= stats["maxMs"]
+        assert stats["avgMs"] >= 0
+    # Semantik Opsi C: waktu Sign mencakup pembangunan kunci tiap iterasi.
+    assert "termasuk pembangunan kunci" in body["results"]["sign"]["operation"]
+
+
+def test_benchmark_validasi_iterasi_dan_file(client: TestClient, env: dict) -> None:
+    _ = env
+    pdf = _real_pdf_bytes("bench")
+    kurang = client.post(
+        "/api/v1/verify/benchmark",
+        files={"file": ("dok.pdf", io.BytesIO(pdf), "application/pdf")},
+        data={"iterations": "29"},
+    )
+    assert kurang.status_code == 422
+    bukan_pdf = client.post(
+        "/api/v1/verify/benchmark",
+        files={"file": ("a.txt", io.BytesIO(b"bukan pdf"), "application/pdf")},
+        data={"iterations": "30"},
+    )
+    assert bukan_pdf.status_code == 400
+    assert bukan_pdf.json()["error"]["code"] == "INVALID_PDF"
+
+
 def test_verify_signature_db_diubah_invalid(client: TestClient, env: dict) -> None:
     sig_id, _, _ = _signed(client, env, "DbTamper1")
 

@@ -670,6 +670,39 @@ paths:
                 $ref: '#/components/schemas/VerifyResult'
         '400':
           $ref: '#/components/responses/BadRequest'
+  /verify/benchmark:
+    post:
+      tags: [verify]
+      summary: Uji performa sign + verifikasi Ed25519 tanpa login
+      operationId: verifyBenchmark
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                iterations:
+                  type: integer
+                  minimum: 30
+                  maximum: 300
+                  default: 30
+      responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '200':
+          description: Matriks waktu proses (milidetik) per operasi
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenchmarkResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
   /verify/manual-file:
     post:
       tags: [verify]
@@ -1275,6 +1308,32 @@ components:
                 format: date-time
               actor:
                 type: string
+    BenchmarkResult:
+      type: object
+      required: [iterations, results]
+      properties:
+        iterations:
+          type: integer
+        results:
+          type: object
+          required: [sign, verify]
+          properties:
+            sign:
+              $ref: '#/components/schemas/BenchmarkStats'
+            verify:
+              $ref: '#/components/schemas/BenchmarkStats'
+    BenchmarkStats:
+      type: object
+      required: [operation, avgMs, minMs, maxMs]
+      properties:
+        operation:
+          type: string
+        avgMs:
+          type: number
+        minMs:
+          type: number
+        maxMs:
+          type: number
     AuditLog:
       type: object
       required: [id, action, details, createdAt]

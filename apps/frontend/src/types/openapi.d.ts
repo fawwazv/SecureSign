@@ -413,6 +413,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/verify/benchmark": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Uji performa sign + verifikasi Ed25519 tanpa login */
+        post: operations["verifyBenchmark"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/verify/manual-file": {
         parameters: {
             query?: never;
@@ -705,6 +722,19 @@ export interface components {
                 at: string;
                 actor?: string;
             }[];
+        };
+        BenchmarkResult: {
+            iterations: number;
+            results: {
+                sign: components["schemas"]["BenchmarkStats"];
+                verify: components["schemas"]["BenchmarkStats"];
+            };
+        };
+        BenchmarkStats: {
+            operation: string;
+            avgMs: number;
+            minMs: number;
+            maxMs: number;
         };
         AuditLog: {
             id: string;
@@ -1534,6 +1564,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VerifyResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    verifyBenchmark: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** @default 30 */
+                    iterations?: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Matriks waktu proses (milidetik) per operasi */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchmarkResult"];
                 };
             };
             400: components["responses"]["BadRequest"];

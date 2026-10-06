@@ -1,5 +1,5 @@
 import { apiClient } from '@/services/apiClient'
-import type { Paginated, Role } from '@/types/api'
+import type { BenchmarkResult, Paginated, Role } from '@/types/api'
 
 /**
  * Tipe lokal FE2 (cermin openapi.yaml, tanpa menyentuh src/types/api.ts milik FE1).
@@ -229,4 +229,18 @@ export const documentService = {
     const { data } = await apiClient.post<KeyPairItem>(`/keys/${id}/revoke`)
     return data
   },
+}
+
+/** Uji performa publik: sign + verifikasi Ed25519 atas hash PDF (min. 30 iterasi). */
+export async function runBenchmark(file: File, iterations = 30) {
+  assertPdfFile(file)
+  const n = Math.floor(iterations)
+  if (!Number.isFinite(n) || n < 30) throw new Error('Iterasi minimal 30.')
+  const form = new FormData()
+  form.append('file', file)
+  form.append('iterations', String(Math.min(n, 300)))
+  const { data } = await apiClient.post<BenchmarkResult>('/verify/benchmark', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data
 }
