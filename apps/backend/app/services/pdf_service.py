@@ -17,8 +17,9 @@ QR_SIZE_PT = 110
 QR_MARGIN_PT = 36
 
 
-def validate_pdf(content: bytes, filename: str) -> tuple[str, int]:
-    """Validasi file PDF. Return (SHA-256 hex, jumlah halaman). Raise 400 bila tidak valid."""
+def validate_pdf(content: bytes, filename: str) -> tuple[str, int, float, float]:
+    """Validasi file PDF. Return (SHA-256 hex, jumlah halaman, lebar, tinggi
+    halaman pertama dalam poin). Raise 400 bila tidak valid."""
     if not content:
         raise AppError("EMPTY_FILE", "File kosong.", status=400)
     if len(content) > MAX_PDF_BYTES:
@@ -30,11 +31,16 @@ def validate_pdf(content: bytes, filename: str) -> tuple[str, int]:
         if not reader.pages:
             raise ValueError("tanpa halaman")
         pages = len(reader.pages)
+        first = reader.pages[0]
+        width = float(first.mediabox.width)
+        height = float(first.mediabox.height)
+        if width <= 0 or height <= 0:
+            raise ValueError("dimensi halaman tak valid")
     except Exception as exc:
         raise AppError(
             "INVALID_PDF", "File PDF tidak bisa dibaca (mungkin kompresi tak didukung).", status=400
         ) from exc
-    return sha256_hex(content), pages
+    return sha256_hex(content), pages, width, height
 
 
 def embed_qr(original: bytes, qr_png: bytes, caption: str) -> bytes:

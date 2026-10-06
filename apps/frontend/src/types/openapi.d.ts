@@ -594,6 +594,10 @@ export interface components {
             version: number;
             /** @description Jumlah halaman PDF */
             pageCount?: number;
+            /** @description Lebar halaman pertama dalam poin (overlay QR presisi) */
+            pageWidth?: number | null;
+            /** @description Tinggi halaman pertama dalam poin */
+            pageHeight?: number | null;
             /** @description Posisi QR fraksi 0..1 origin kiri-atas, dipakai saat signing */
             qrPlacements?: Record<string, never>[];
             /** Format: date-time */

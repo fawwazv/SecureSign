@@ -1059,6 +1059,14 @@ components:
         pageCount:
           type: integer
           description: Jumlah halaman PDF
+        pageWidth:
+          type: number
+          nullable: true
+          description: Lebar halaman pertama dalam poin (overlay QR presisi)
+        pageHeight:
+          type: number
+          nullable: true
+          description: Tinggi halaman pertama dalam poin
         qrPlacements:
           type: array
           description: Posisi QR fraksi 0..1 origin kiri-atas, dipakai saat signing

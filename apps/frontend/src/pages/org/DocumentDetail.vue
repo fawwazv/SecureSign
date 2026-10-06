@@ -20,16 +20,30 @@
           </div>
         </div>
       </Card>
+      <div class="flex flex-col gap-2">
+        <Alert v-if="previewWarning" variant="warning" title="File bertanda tidak ditemukan">{{ previewWarning }}</Alert>
+        <div class="flex items-center justify-between gap-2">
+          <p class="truncate text-sm font-semibold text-deep-blue">{{ doc.title }}</p>
+          <a
+            :href="previewUrl || undefined"
+            target="_blank"
+            rel="noopener"
+            class="shrink-0 text-xs font-semibold text-deep-blue hover:underline"
+          >
+            Buka di tab baru
+          </a>
+        </div>
       <QrEditor
         :key="doc.id"
         :document-id="doc.id"
         :page-count="doc.pageCount || 1"
         :initial="doc.qrPlacements || []"
         :can-edit="doc.status === 'DRAFT'"
+        :page-aspect="pageAspect"
       >
-        <Alert v-if="previewWarning" variant="warning" title="File bertanda tidak ditemukan">{{ previewWarning }}</Alert>
-        <PDFPreview :src="previewUrl" :title="doc.title" />
+        <PDFPreview :src="previewUrl" :title="doc.title" bare />
       </QrEditor>
+      </div>
       <p v-if="previewError" role="alert" class="text-xs text-[#B3261E]">{{ previewError }}</p>
       <div v-if="previewUrl" class="flex flex-wrap items-center gap-2">
         <span class="text-xs text-slate-500">
@@ -112,8 +126,13 @@ const downloadError = ref('')
 const downloading = ref(false)
 let previewSeq = 0
 const signers = ref<{ id: string; fullName: string; email: string; organization: string }[]>([])
-const tone = computed(() => {
-  switch (doc.value?.status) {
+/** Aspek halaman PDF ("lebar / tinggi") agar stage QR tepat = halaman. Kosong = fallback lama. */
+const pageAspect = computed(() => {
+  const w = doc.value?.pageWidth
+  const h = doc.value?.pageHeight
+  return w && h && w > 0 && h > 0 ? `${w} / ${h}` : ''
+})
+const tone = computed(() => {  switch (doc.value?.status) {
     case 'PENDING':
       return 'pending' as const
     case 'SIGNED':

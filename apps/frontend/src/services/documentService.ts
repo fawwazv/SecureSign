@@ -19,6 +19,8 @@ export interface DocumentItem {
   status: DocumentStatus
   version: number
   pageCount: number
+  pageWidth?: number | null
+  pageHeight?: number | null
   qrPlacements: { page: number; x: number; y: number; size: number }[]
   createdAt: string
   updatedAt: string

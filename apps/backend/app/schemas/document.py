@@ -17,6 +17,8 @@ class DocumentResponse(BaseModel):
     status: str
     version: int
     page_count: int = Field(default=1, alias="pageCount")
+    page_width: float | None = Field(default=None, alias="pageWidth")
+    page_height: float | None = Field(default=None, alias="pageHeight")
     qr_placements: list[dict[str, Any]] = Field(default_factory=list, alias="qrPlacements")
     created_at: str = Field(alias="createdAt")
     updated_at: str = Field(alias="updatedAt")
@@ -35,6 +37,8 @@ def to_document_response(doc: object) -> dict:
         status=str(doc.status),  # type: ignore[attr-defined]
         version=doc.version,  # type: ignore[attr-defined]
         pageCount=int(getattr(doc, "pageCount", 1) or 1),
+        pageWidth=getattr(doc, "pageWidth", None),
+        pageHeight=getattr(doc, "pageHeight", None),
         qrPlacements=list(placements) if isinstance(placements, list) else [],
         createdAt=str(doc.createdAt),  # type: ignore[attr-defined]
         updatedAt=str(doc.updatedAt),  # type: ignore[attr-defined]

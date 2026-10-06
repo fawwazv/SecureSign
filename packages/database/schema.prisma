@@ -100,6 +100,8 @@ model Document {
   fileHash     String         @map("file_hash") // SHA-256 hex dari byte PDF asli
   metadata     Json           @default("{}") // metadata kanonis (JCS) yang ikut ditandatangani
   pageCount    Int            @default(1) @map("page_count") // jumlah halaman PDF
+  pageWidth    Float?         @map("page_width") // lebar halaman pertama (poin, untuk overlay QR presisi)
+  pageHeight   Float?         @map("page_height") // tinggi halaman pertama (poin)
   qrPlacements Json           @default("[]") // [{page, x, y, size}] fraksi 0..1, origin kiri-atas
   status       DocumentStatus @default(DRAFT)
   version      Int            @default(1) // optimistic locking untuk batch sign

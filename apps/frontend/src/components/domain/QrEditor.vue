@@ -17,14 +17,15 @@
     </div>
     <p v-else class="text-xs text-slate-500">Total QR: {{ boxes.length }} (posisi terkunci — dokumen sudah diproses)</p>
 
-    <div ref="stageRef" class="relative touch-none overflow-hidden rounded-md border border-dashed border-light-blue bg-slate-50" style="min-height: 120px">
-      <slot />
-      <div
-        v-for="b in boxesOnPage" :key="b.id"
-        class="absolute border-2 border-deep-blue bg-deep-blue/10"
-        :style="{ left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.size * 100}%`, aspectRatio: '1 / 1' }"
-        @pointerdown="startDrag($event, b, 'move')"
-      >
+    <div class="overflow-hidden rounded-md border border-dashed border-light-blue bg-slate-50">
+      <div ref="pageRef" class="relative w-full touch-none overflow-hidden" :style="pageBoxStyle">
+        <slot />
+        <div
+          v-for="b in boxesOnPage" :key="b.id"
+          class="absolute border-2 border-deep-blue bg-deep-blue/10"
+          :style="{ left: `${b.x * 100}%`, top: `${b.y * 100}%`, width: `${b.size * 100}%`, aspectRatio: '1 / 1' }"
+          @pointerdown="startDrag($event, b, 'move')"
+        >
         <span class="absolute left-1 top-1 rounded bg-deep-blue px-1 text-[10px] font-bold text-white">QR</span>
         <span
           v-if="canEdit"
@@ -42,6 +43,7 @@
       <p v-if="!boxesOnPage.length" class="pointer-events-none absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-slate-400">
         {{ canEdit ? 'Klik “Tambah QR Code”, lalu geser dan ubah ukurannya ke posisi yang sesuai.' : 'Belum ada QR pada halaman ini.' }}
       </p>
+      </div>
     </div>
 
     <Button v-if="canEdit" variant="primary" :disabled="!dirty" :loading="saving" @click="save">
@@ -71,12 +73,27 @@ const props = defineProps<{
   pageCount: number
   initial: { page: number; x: number; y: number; size: number }[]
   canEdit: boolean
+  /**
+   * Rasio aspek halaman PDF ("lebar / tinggi", cth. "595 / 842").
+   * Bila diisi, kotak stage dikunci ke aspek ini sehingga fraksi box
+   * tepat memetakan ke halaman PDF (tanpa offset bilah judul/viewer).
+   * Kosong = perilaku lama (stage selebar kontainer).
+   */
+  pageAspect?: string
 }>()
 
 const emit = defineEmits<{ saved: [placements: { page: number; x: number; y: number; size: number }[]] }>()
 
-const stageRef = ref<HTMLElement | null>(null)
+const pageRef = ref<HTMLElement | null>(null)
 const page = ref(1)
+
+/** Gaya kotak halaman: kunci ke aspek PDF bila diketahui backend. */
+const pageBoxStyle = computed(() => {
+  const style: Record<string, string> = {}
+  if (props.pageAspect) style.aspectRatio = props.pageAspect
+  else style.minHeight = '480px'
+  return style
+})
 const boxes = ref<QrBox[]>(props.initial.map((p, i) => ({ ...p, id: i + 1 })))
 let seq = props.initial.length
 const saving = ref(false)
@@ -116,7 +133,7 @@ function clamp(v: number, lo: number, hi: number) {
 
 function startDrag(e: PointerEvent, box: QrBox, mode: 'move' | 'resize') {
   if (!props.canEdit) return
-  const el = stageRef.value
+  const el = pageRef.value
   if (!el) return
   ;(e.target as HTMLElement).setPointerCapture?.(e.pointerId)
   drag = { id: box.id, mode, startX: e.clientX, startY: e.clientY, orig: { ...box } }

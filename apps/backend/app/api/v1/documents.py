@@ -99,7 +99,9 @@ async def upload_document(
     metadata: Annotated[str, Form()] = "{}",
 ):
     content = await file.read()
-    file_hash, page_count = validate_pdf(content, file.filename or "dokumen.pdf")
+    file_hash, page_count, page_width, page_height = validate_pdf(
+        content, file.filename or "dokumen.pdf"
+    )
     try:
         meta = json.loads(metadata) if metadata else {}
     except ValueError:
@@ -121,6 +123,8 @@ async def upload_document(
             "fileHash": file_hash,
             "metadata": Json(meta),
             "pageCount": page_count,
+            "pageWidth": page_width,
+            "pageHeight": page_height,
             "status": "DRAFT",
         }
     )

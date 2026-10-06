@@ -133,6 +133,8 @@ def test_upload_dan_validasi(client: TestClient, users: dict) -> None:
     assert body["title"] == "Kontrak K-1" and body["status"] == "DRAFT"
     assert len(body["fileHash"]) == 64 and body["metadata"] == {"no": "K-1"}
     assert set(body) >= {"id", "storagePath", "fileHash", "version", "createdAt", "updatedAt"}
+    # Dimensi halaman pertama untuk overlay QR presisi di FE.
+    assert body["pageWidth"] > 0 and body["pageHeight"] > 0
 
     bukan_pdf = _upload(client, users["t_org"], filename="a.txt", content=b"hello")
     assert bukan_pdf.status_code == 400
