@@ -1290,6 +1290,9 @@ components:
         signerPosition:
           type: string
           description: Jabatan penandatangan saat signing (opsional, dari approve)
+        signerOrganization:
+          type: string
+          description: Institusi penandatangan (snapshot QR, fallback akun)
         signedAt:
           type: string
           format: date-time

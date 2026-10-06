@@ -351,3 +351,5 @@ def test_approve_dengan_jabatan_tersimpan_dan_qr_kaya(client: TestClient, env: d
     assert ver.status_code == 200, ver.text
     assert ver.json()["status"] == "VALID"
     assert ver.json()["signerPosition"] == "Direktur Keuangan"
+    # Institusi: snapshot org dari QR payload (fallback: organisasi akun).
+    assert ver.json()["signerOrganization"] == "PT Tes"

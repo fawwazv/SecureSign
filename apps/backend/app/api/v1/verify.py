@@ -104,10 +104,27 @@ async def _valid_result(db: Prisma, sig: Any) -> dict[str, Any]:
         "documentName": doc.title if doc else None,
         "signerName": signer.fullName if signer else None,
         "signerPosition": getattr(sig, "signerPosition", None),
+        "signerOrganization": _signer_org_snapshot(sig, signer),
         "signedAt": str(sig.createdAt),
         "reason": None,
         "auditTrail": await _audit_trail(db, sig),
     }
+
+
+def _signer_org_snapshot(sig: Any, signer: Any) -> str | None:
+    """Institusi penandatangan: snapshot `org` dari QR payload (konsisten
+    dengan Jabatan), fallback ke organisasi akun saat ini."""
+    try:
+        from app.services.qr_service import parse_qr_payload
+
+        org = str((parse_qr_payload(sig.qrPayload) or {}).get("org") or "").strip()
+        if org:
+            return org
+    except Exception:  # noqa: BLE001, S110
+        pass
+    if signer and str(getattr(signer, "organization", "") or "").strip():
+        return str(signer.organization).strip()
+    return None
 
 
 @router.get("/verify/{sig_id}", response_model=dict)

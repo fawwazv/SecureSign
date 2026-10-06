@@ -713,6 +713,8 @@ export interface components {
             signerName?: string;
             /** @description Jabatan penandatangan saat signing (opsional, dari approve) */
             signerPosition?: string;
+            /** @description Institusi penandatangan (snapshot QR, fallback akun) */
+            signerOrganization?: string;
             /** Format: date-time */
             signedAt?: string;
             reason?: string;

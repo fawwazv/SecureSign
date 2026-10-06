@@ -139,6 +139,7 @@
           <div><dt class="text-slate-500">Dokumen</dt><dd class="font-medium">{{ result.documentName ?? '-' }}</dd></div>
           <div><dt class="text-slate-500">Penandatangan</dt><dd class="font-medium">{{ result.signerName ?? '-' }}</dd></div>
           <div><dt class="text-slate-500">Jabatan</dt><dd class="font-medium">{{ result.signerPosition ?? '-' }}</dd></div>
+          <div><dt class="text-slate-500">Institusi</dt><dd class="font-medium">{{ result.signerOrganization ?? '-' }}</dd></div>
           <div><dt class="text-slate-500">Waktu tanda tangan</dt><dd class="font-medium">{{ result.signedAt ? formatDate(result.signedAt) : '-' }}</dd></div>
         </dl>
         <div v-if="result.auditTrail?.length" class="mt-4">
