@@ -10,6 +10,17 @@
       <Card title="Review dokumen" :subtitle="`Status: ${item.status}`">
         <div class="flex flex-col gap-3 text-sm">
           <p><span class="font-semibold text-deep-blue">Dokumen:</span> {{ item.documentId }}</p>
+          <div v-if="doc" class="rounded-md border border-light-blue bg-white p-3">
+            <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Data dokumen</p>
+            <p class="mt-1 font-semibold text-deep-blue">{{ doc.title }}</p>
+            <dl class="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2">
+              <div v-if="doc.metadata?.nama"><dt class="text-xs text-slate-500">Nama mahasiswa</dt><dd class="font-medium">{{ doc.metadata.nama }}</dd></div>
+              <div v-if="doc.metadata?.nim"><dt class="text-xs text-slate-500">NIM</dt><dd class="font-medium">{{ doc.metadata.nim }}</dd></div>
+              <div v-if="doc.metadata?.tanggal"><dt class="text-xs text-slate-500">Tanggal surat</dt><dd class="font-medium">{{ formatShortDate(doc.metadata.tanggal) }}</dd></div>
+              <div v-if="doc.metadata?.jenis"><dt class="text-xs text-slate-500">Jenis dokumen</dt><dd class="font-medium">{{ doc.metadata.jenis }}</dd></div>
+            </dl>
+            <p v-if="doc.description" class="mt-2 text-slate-600">{{ doc.description }}</p>
+          </div>
           <p v-if="item.message" class="rounded-md bg-cream p-3 text-brown">“{{ item.message }}”</p>
           <p v-if="item.rejectReason" class="rounded-md bg-red-50 p-3 text-[#B3261E]">Alasan tolak: {{ item.rejectReason }}</p>
           <div class="flex flex-col gap-1.5">
@@ -99,7 +110,7 @@ import Input from '@/components/ui/Input.vue'
 import Modal from '@/components/ui/Modal.vue'
 import PDFPreview from '@/components/domain/PDFPreview.vue'
 import QRViewer from '@/components/domain/QRViewer.vue'
-import { documentService, downloadDocumentBlob, type KeyPairItem, type SignRequestItem } from '@/services/documentService'
+import { documentService, downloadDocumentBlob, type DocumentItem, type KeyPairItem, type SignRequestItem } from '@/services/documentService'
 import { toApiMessage } from '@/services/apiClient'
 import { useSignRequest } from '@/composables/useSignRequest'
 
@@ -109,6 +120,7 @@ const { approve, reject } = useSignRequest()
 
 const id = computed(() => String(route.params.id))
 const item = ref<SignRequestItem | null>(null)
+const doc = ref<DocumentItem | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 const notice = ref('')
@@ -231,11 +243,28 @@ async function load() {
     const pending = await documentService.listPendingSignRequests({ page: 1, limit: 100 })
     item.value = pending.data.find((r) => r.id === id.value) ?? null
     if (!item.value) error.value = 'Permintaan tidak ditemukan atau sudah diproses.'
-    else await Promise.all([loadPreview(item.value.documentId), loadKeys()])
+    else await Promise.all([loadPreview(item.value.documentId), loadKeys(), loadDoc(item.value.documentId)])
   } catch (e) {
     error.value = toApiMessage(e, 'Gagal memuat permintaan.')
   } finally {
     loading.value = false
+  }
+}
+
+function formatShortDate(v: string): string {
+  try {
+    return new Date(v.length === 10 ? `${v}T00:00:00` : v).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+  } catch {
+    return v
+  }
+}
+
+/** Muat detail dokumen (judul + metadata terisi) untuk bahan review signer. */
+async function loadDoc(documentId: string) {
+  try {
+    doc.value = await documentService.getDocument(documentId)
+  } catch {
+    doc.value = null
   }
 }
 
