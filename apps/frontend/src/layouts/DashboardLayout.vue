@@ -119,7 +119,7 @@
     </aside>
 
     <!-- Konten -->
-    <main id="konten-dashboard" class="mx-auto max-w-6xl px-4 pb-10 pt-16 lg:pl-72 lg:pt-8" tabindex="-1">
+    <main id="konten-dashboard" class="mx-auto max-w-7xl px-4 pb-10 pt-16 lg:pl-72 lg:pt-8" tabindex="-1">
       <RouterView />
     </main>
   </div>
@@ -128,7 +128,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Bell, ChevronDown, ChevronsUpDown, Files, FileText, Home, Inbox, Layers, LayoutDashboard, Menu, ScrollText, ShieldCheck, Upload, Users } from 'lucide-vue-next'
+import { Bell, ChevronDown, ChevronsUpDown, Home, Inbox, Layers, LayoutDashboard, Menu, ScrollText, ShieldCheck, Upload, Users } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/authStore'
 import { BrandMark } from '@/components/ui'
 import { useNotificationStore } from '@/stores/notificationStore'
@@ -158,7 +158,6 @@ const navItems = computed(() => {
   if (role === 'SEKRETARIAT' || role === 'SUPER_ADMIN') {
     items.push({ to: '/org', label: 'Dashboard', icon: LayoutDashboard })
     items.push({ to: '/org/upload', label: 'Unggah Dokumen', icon: Upload })
-    items.push({ to: '/org/documents', label: 'Dokumen', icon: Files })
   }
   if (role === 'SIGNER' || role === 'SUPER_ADMIN') {
     items.push({ to: '/signer', label: 'Permintaan Tanda Tangan', icon: Inbox, badge: docStore.pendingTotal })

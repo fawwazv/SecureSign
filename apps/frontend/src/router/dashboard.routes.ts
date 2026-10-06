@@ -33,13 +33,6 @@ export function registerDashboardRoutes(router: Router): void {
         meta: { title: 'Upload PDF — SignVault' },
       },
       {
-        path: 'documents',
-        name: 'org-documents',
-        component: () => import('@/pages/org/DocumentList.vue'),
-        beforeEnter: orgOnly,
-        meta: { title: 'Dokumen — SignVault' },
-      },
-      {
         path: 'documents/:id',
         name: 'org-document-detail',
         component: () => import('@/pages/org/DocumentDetail.vue'),
