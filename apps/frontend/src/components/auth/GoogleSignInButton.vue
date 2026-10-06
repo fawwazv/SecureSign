@@ -1,6 +1,8 @@
 <template>
   <div>
-    <div ref="btnRef"></div>
+    <div class="flex justify-center">
+      <div ref="btnRef" class="max-w-full overflow-hidden"></div>
+    </div>
     <p v-if="fallback" class="mt-2 text-center text-xs text-slate-500">
       Tombol Google tidak dapat dimuat (script/client-id belum siap).
       Lanjutkan dengan email + kata sandi.
