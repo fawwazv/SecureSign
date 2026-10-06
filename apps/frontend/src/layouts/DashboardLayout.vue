@@ -22,14 +22,8 @@
       :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
       aria-label="Navigasi dashboard"
     >
-      <div class="flex h-16 items-center gap-2 px-4">
-        <span class="inline-flex h-8 w-8 items-center justify-center rounded-md bg-deep-blue text-white" aria-hidden="true">
-          <FileText class="h-4 w-4" />
-        </span>
-        <span class="leading-tight">
-          <span class="block text-[15px] font-bold text-slate-900">SecureSign</span>
-          <span class="block text-[10px] font-medium tracking-wider text-slate-400">TANDA TANGAN DIGITAL</span>
-        </span>
+      <div class="flex h-16 items-center px-4">
+        <BrandMark size="sm" subtitle="TANDA TANGAN DIGITAL" />
       </div>
       <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         <RouterLink
@@ -136,6 +130,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Bell, ChevronDown, ChevronsUpDown, Files, FileText, Home, Inbox, Layers, LayoutDashboard, Menu, ScrollText, ShieldCheck, Upload, Users } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/authStore'
+import { BrandMark } from '@/components/ui'
 import { useNotificationStore } from '@/stores/notificationStore'
 import { useDocumentStore } from '@/stores/documentStore'
 

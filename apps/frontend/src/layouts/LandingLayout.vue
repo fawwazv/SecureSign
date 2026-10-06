@@ -7,11 +7,8 @@
     <!-- Header publik -->
     <header class="sticky top-0 z-40 border-b border-cream bg-white/90 backdrop-blur">
       <div class="sv-container flex h-16 items-center justify-between gap-4">
-        <RouterLink to="/" class="flex items-center gap-2" aria-label="SignVault beranda">
-          <span class="flex h-9 w-9 items-center justify-center rounded-md bg-deep-blue text-white">
-            <ShieldCheck class="h-5 w-5" aria-hidden="true" />
-          </span>
-          <span class="text-lg font-bold text-deep-blue">SignVault</span>
+        <RouterLink to="/" aria-label="SignVault beranda">
+          <BrandMark />
         </RouterLink>
 
         <nav class="hidden items-center gap-6 text-sm font-medium text-slate-700 md:flex" aria-label="Navigasi utama">
@@ -42,12 +39,7 @@
     <footer class="border-t border-cream bg-deep-blue text-white">
       <div class="sv-container grid gap-8 py-12 md:grid-cols-4">
         <div>
-          <div class="flex items-center gap-2">
-            <span class="flex h-9 w-9 items-center justify-center rounded-md bg-white text-deep-blue">
-              <ShieldCheck class="h-5 w-5" aria-hidden="true" />
-            </span>
-            <span class="text-lg font-bold">SignVault</span>
-          </div>
+          <BrandMark variant="light" />
           <p class="mt-3 text-sm text-white/80">
             Tanda tangan dokumen elektronik yang aman, cepat, dan terverifikasi.
           </p>
@@ -88,6 +80,5 @@
 </template>
 
 <script setup lang="ts">
-import { ShieldCheck } from 'lucide-vue-next'
-import { Button } from '@/components/ui'
+import { Button, BrandMark } from '@/components/ui'
 </script>
