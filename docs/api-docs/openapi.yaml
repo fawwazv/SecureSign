@@ -1095,8 +1095,9 @@ components:
           type: string
           description: >-
             JSON string metadata kanonis yang ikut ditandatangani. Key standar
-            form unggah: nomor (maks 50), tanggal (YYYY-MM-DD), jenis (salah satu
-            dari 14 jenis dokumen), pengirim (maks 100).
+            form unggah: nama (maks 100), nim (digit 8-20), tanggal
+            (YYYY-MM-DD), jenis (salah satu jenis dokumen akademik);
+            nomor/pengirim hanya untuk dokumen lama.
     Document:
       type: object
       required: [id, title, storagePath, fileHash, metadata, status, version, createdAt, updatedAt]

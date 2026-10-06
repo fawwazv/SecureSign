@@ -44,30 +44,39 @@ def _is_storage_not_found(exc: Exception) -> bool:
     )
 
 
-# Daftar jenis dokumen — sumber kebenaran tunggal, cermin JENIS_LIST di FE.
+# Daftar jenis dokumen akademik — sumber kebenaran tunggal, cermin JENIS_LIST di FE.
 DOCUMENT_JENIS = (
     "Lainnya",
-    "Peraturan",
-    "Instruksi",
-    "Surat Edaran",
-    "Keputusan",
-    "Surat Tugas",
-    "Surat Dinas",
-    "Surat Undangan",
-    "Nota Dinas",
-    "Memo",
-    "Berita Acara",
-    "Surat Keterangan",
-    "Surat Pengantar",
-    "Laporan",
+    "Surat Keterangan Aktif Kuliah",
+    "Surat Keterangan Lulus",
+    "Surat Tugas Akhir",
+    "Surat Kerja Praktik / Magang",
+    "Surat Rekomendasi Beasiswa",
+    "Surat Pengantar Penelitian",
+    "Surat Izin Observasi / Penelitian",
+    "Surat Keterangan Cuti Akademik",
+    "Surat Permohonan Transkrip / Legalisir",
+    "Surat Keterangan Bebas Administrasi",
 )
 
 
 def validate_doc_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     """Validasi field standar form unggah. Raise AppError 400 bila langgar."""
+    # nomor dipertahankan agar dokumen lama tetap lolos validasi (form baru tak mengirimnya).
     nomor = meta.get("nomor", "")
     if nomor and (not isinstance(nomor, str) or len(nomor) > 50):
         raise AppError("INVALID_METADATA", "metadata.nomor maksimal 50 karakter.", status=400)
+    nama = meta.get("nama", "")
+    if nama and (not isinstance(nama, str) or len(nama) > 100):
+        raise AppError("INVALID_METADATA", "metadata.nama maksimal 100 karakter.", status=400)
+    nim = meta.get("nim", "")
+    if nim:
+        import re
+
+        if not isinstance(nim, str) or not re.fullmatch(r"\d{8,20}", nim):
+            raise AppError(
+                "INVALID_METADATA", "metadata.nim harus digit 8-20 karakter.", status=400
+            )
     tanggal = meta.get("tanggal", "")
     if tanggal:
         from datetime import date

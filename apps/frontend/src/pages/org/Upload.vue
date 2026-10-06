@@ -25,9 +25,12 @@
           <p id="pdf-hint" class="text-xs text-slate-500">Hanya PDF, maksimal 25 MB.</p>
           <p v-if="fileError" role="alert" class="text-xs text-[#B3261E]">{{ fileError }}</p>
         </div>
-        <Input id="doc-title" v-model="title" label="Perihal / Judul" placeholder="cth. Surat Tugas Perjalanan Dinas" required :error="err('title')" @blur="touch('title')" />
+        <Input id="doc-title" v-model="title" label="Perihal / Judul" placeholder="cth. Surat Keterangan Aktif Kuliah" required :error="err('title')" @blur="touch('title')" />
         <div class="grid gap-4 sm:grid-cols-2">
-          <Input id="doc-nomor" v-model="nomor" label="Nomor surat" placeholder="cth. 001/IX/2026" :error="err('nomor')" @blur="touch('nomor')" />
+          <Input id="doc-nama" v-model="nama" label="Nama mahasiswa" placeholder="cth. Muhammad Fawwazul Haq" :error="err('nama')" @blur="touch('nama')" />
+          <Input id="doc-nim" v-model="nim" label="NIM" placeholder="cth. 247006111088" :error="err('nim')" @blur="touch('nim')" />
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
           <div class="flex flex-col gap-1.5">
             <label for="doc-tanggal" class="text-sm font-medium text-slate-800">Tanggal surat</label>
             <input
@@ -37,8 +40,6 @@
             />
             <p v-if="err('tanggal')" role="alert" class="text-xs text-[#B3261E]">{{ err('tanggal') }}</p>
           </div>
-        </div>
-        <div class="grid gap-4 sm:grid-cols-2">
           <div class="flex flex-col gap-1.5">
             <label for="doc-jenis" class="text-sm font-medium text-slate-800">Jenis dokumen</label>
             <select
@@ -48,7 +49,6 @@
               <option v-for="j in JENIS_LIST" :key="j" :value="j">{{ j }}</option>
             </select>
           </div>
-          <Input id="doc-pengirim" v-model="pengirim" label="Pengirim / unit" placeholder="cth. Fakultas Teknik" />
         </div>
         <Input id="doc-desc" v-model="description" label="Keterangan (opsional)" placeholder="Catatan tambahan dokumen" />
         <Button type="submit" variant="primary" :loading="isLoading" :disabled="!canSubmit">
@@ -69,9 +69,17 @@ import Input from '@/components/ui/Input.vue'
 import { useDocument } from '@/composables/useDocument'
 
 const JENIS_LIST = [
-  'Lainnya', 'Peraturan', 'Instruksi', 'Surat Edaran', 'Keputusan', 'Surat Tugas',
-  'Surat Dinas', 'Surat Undangan', 'Nota Dinas', 'Memo', 'Berita Acara',
-  'Surat Keterangan', 'Surat Pengantar', 'Laporan',
+  'Lainnya',
+  'Surat Keterangan Aktif Kuliah',
+  'Surat Keterangan Lulus',
+  'Surat Tugas Akhir',
+  'Surat Kerja Praktik / Magang',
+  'Surat Rekomendasi Beasiswa',
+  'Surat Pengantar Penelitian',
+  'Surat Izin Observasi / Penelitian',
+  'Surat Keterangan Cuti Akademik',
+  'Surat Permohonan Transkrip / Legalisir',
+  'Surat Keterangan Bebas Administrasi',
 ] as const
 
 const { isLoading, error, uploadDocument, clearError } = useDocument()
@@ -81,10 +89,10 @@ const fileRef = ref<HTMLInputElement | null>(null)
 const file = ref<File | null>(null)
 const fileError = ref('')
 const title = ref('')
-const nomor = ref('')
+const nama = ref('')
+const nim = ref('')
 const tanggal = ref('')
 const jenis = ref<(typeof JENIS_LIST)[number]>('Lainnya')
-const pengirim = ref('')
 const description = ref('')
 const success = ref(false)
 const touchedFields = reactive<Record<string, boolean>>({})
@@ -93,12 +101,16 @@ function touch(k: string) {
   touchedFields[k] = true
 }
 
-function err(k: 'title' | 'nomor' | 'tanggal'): string {
+function err(k: 'title' | 'nama' | 'nim' | 'tanggal'): string {
   if (!touchedFields[k]) return ''
   if (k === 'title') return title.value.trim().length > 0 ? '' : 'Perihal wajib diisi.'
-  if (k === 'nomor') {
-    if (!nomor.value.trim()) return ''
-    return nomor.value.trim().length <= 50 ? '' : 'Nomor maksimal 50 karakter.'
+  if (k === 'nama') {
+    if (!nama.value.trim()) return ''
+    return nama.value.trim().length <= 100 ? '' : 'Nama maksimal 100 karakter.'
+  }
+  if (k === 'nim') {
+    if (!nim.value.trim()) return ''
+    return /^\d{8,20}$/.test(nim.value.trim()) ? '' : 'NIM harus digit 8-20 karakter.'
   }
   if (k === 'tanggal') {
     if (!tanggal.value) return ''
@@ -109,10 +121,10 @@ function err(k: 'title' | 'nomor' | 'tanggal'): string {
 
 const metaObject = computed(() => {
   const obj: Record<string, string> = {}
-  if (nomor.value.trim()) obj.nomor = nomor.value.trim()
+  if (nama.value.trim()) obj.nama = nama.value.trim()
+  if (/^\d{8,20}$/.test(nim.value.trim())) obj.nim = nim.value.trim()
   if (tanggal.value && !Number.isNaN(Date.parse(tanggal.value))) obj.tanggal = tanggal.value
   if (jenis.value && jenis.value !== 'Lainnya') obj.jenis = jenis.value
-  if (pengirim.value.trim()) obj.pengirim = pengirim.value.trim()
   return obj
 })
 
@@ -121,7 +133,8 @@ const canSubmit = computed(
     !!file.value &&
     !fileError.value &&
     title.value.trim().length > 0 &&
-    (!nomor.value.trim() || nomor.value.trim().length <= 50) &&
+    (!nama.value.trim() || nama.value.trim().length <= 100) &&
+    (!nim.value.trim() || /^\d{8,20}$/.test(nim.value.trim())) &&
     (!tanggal.value || !Number.isNaN(Date.parse(tanggal.value))) &&
     !isLoading.value,
 )
@@ -148,7 +161,7 @@ function onFile() {
 }
 
 async function submit() {
-  Object.assign(touchedFields, { title: true, nomor: true, tanggal: true })
+  Object.assign(touchedFields, { title: true, nama: true, nim: true, tanggal: true })
   if (!canSubmit.value) return
   success.value = false
   if (!file.value) return

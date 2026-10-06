@@ -612,7 +612,7 @@ export interface components {
             file: string;
             title: string;
             description?: string;
-            /** @description JSON string metadata kanonis yang ikut ditandatangani. Key standar form unggah: nomor (maks 50), tanggal (YYYY-MM-DD), jenis (salah satu dari 14 jenis dokumen), pengirim (maks 100). */
+            /** @description JSON string metadata kanonis yang ikut ditandatangani. Key standar form unggah: nama (maks 100), nim (digit 8-20), tanggal (YYYY-MM-DD), jenis (salah satu jenis dokumen akademik); nomor/pengirim hanya untuk dokumen lama. */
             metadata?: string;
         };
         Document: {

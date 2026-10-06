@@ -147,22 +147,31 @@ def test_upload_dan_validasi(client: TestClient, users: dict) -> None:
     meta_salah = _upload(client, users["t_org"], metadata="bukan-json")
     assert meta_salah.status_code == 400
 
-    # Metadata terstruktur ala form: valid disimpan, invalid ditolak.
+    # Metadata terstruktur ala form akademik: valid disimpan, invalid ditolak.
     structured = _upload(
         client,
         users["t_org"],
-        title="Surat Tugas",
-        metadata='{"nomor": "001/IX/2026", "tanggal": "2026-09-29", "jenis": "Surat Tugas", "pengirim": "FTI"}',
+        title="SK Aktif",
+        metadata='{"nama": "Muhammad Fawwazul Haq", "nim": "247006111088", "tanggal": "2026-09-29", "jenis": "Surat Keterangan Aktif Kuliah", "pengirim": "FTI"}',
     )
     assert structured.status_code == 201, structured.text
     assert structured.json()["metadata"] == {
-        "nomor": "001/IX/2026",
+        "nama": "Muhammad Fawwazul Haq",
+        "nim": "247006111088",
         "tanggal": "2026-09-29",
-        "jenis": "Surat Tugas",
+        "jenis": "Surat Keterangan Aktif Kuliah",
         "pengirim": "FTI",
     }
+    # Dokumen lama bernomor tetap diterima (backward compat).
+    legacy = _upload(client, users["t_org"], metadata='{"nomor": "001/IX/2026"}')
+    assert legacy.status_code == 201, legacy.text
     assert _upload(client, users["t_org"], metadata='{"tanggal": "29-09-2026"}').status_code == 400
     assert _upload(client, users["t_org"], metadata='{"jenis": "Alien"}').status_code == 400
+    assert _upload(client, users["t_org"], metadata='{"nim": "ABC123"}').status_code == 400
+    assert _upload(client, users["t_org"], metadata='{"nim": "12345"}').status_code == 400
+    assert (
+        _upload(client, users["t_org"], metadata='{"nama": "' + "x" * 101 + '"}').status_code == 400
+    )
     assert (
         _upload(client, users["t_org"], metadata='{"nomor": "' + "x" * 51 + '"}').status_code == 400
     )
