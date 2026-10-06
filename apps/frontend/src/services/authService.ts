@@ -93,4 +93,17 @@ export const verifyService = {
     const { data } = await apiClient.get<VerifyResult>(`/verify/${encodeURIComponent(sigId)}`)
     return data
   },
+
+  /** Verifikasi publik memakai file bertanda + kunci tempelan: POST /verify/manual-file. */
+  async verifyManualFile(file: File, publicKey: string): Promise<VerifyResult> {
+    if (file.size > 25 * 1024 * 1024) throw new Error('Ukuran file melebihi 25 MB.')
+    if (!publicKey.includes('BEGIN PUBLIC KEY')) throw new Error('Kunci publik harus format PEM.')
+    const form = new FormData()
+    form.append('file', file)
+    form.append('publicKey', publicKey.trim())
+    const { data } = await apiClient.post<VerifyResult>('/verify/manual-file', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return data
+  },
 }

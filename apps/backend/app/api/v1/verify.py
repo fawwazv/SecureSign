@@ -34,14 +34,18 @@ def _invalid(reason: str) -> dict[str, Any]:
     return {"status": "INVALID", "reason": reason}
 
 
-async def _crypto_valid(db: Prisma, sig: Any) -> tuple[bool, str]:
+async def _crypto_valid(db: Prisma, sig: Any, key: Any | None = None) -> tuple[bool, str]:
     """Cek kunci aktif + signature kriptografis. Return (valid, reason).
     PADES: validasi ByteRange via pyHanko atas PDF final. LEGACY: verifikasi
-    detached atas hash + metadata kanonis."""
-    key = await db.keypair.find_unique(where={"id": sig.keyPairId})
+    detached atas hash + metadata kanonis.
+    `key` opsional: bila diisi (mode kunci manual), kunci DB tidak dibaca
+    kecuali untuk cek revoke."""
+
     if key is None:
-        return False, "Kunci penandatangan tidak ditemukan."
-    if key.revoked:
+        key = await db.keypair.find_unique(where={"id": sig.keyPairId})
+        if key is None:
+            return False, "Kunci penandatangan tidak ditemukan."
+    if getattr(key, "revoked", False):
         return False, "Kunci penandatangan sudah di-revoke."
     if getattr(sig, "sigFormat", "LEGACY") == "PADES":
         return await _pades_valid(db, sig, key)
@@ -116,6 +120,68 @@ async def verify_by_sig_id(sig_id: str, db: Annotated[Prisma, Depends(get_db)]):
         entity="signature",
         entity_id=sig_id,
         details={"method": "sig_id", "result": "VALID" if ok else "INVALID"},
+    )
+    if not ok:
+        return _invalid(reason)
+    return await _valid_result(db, sig)
+
+
+@router.post("/verify/manual-file", response_model=dict)
+async def verify_manual_file(
+    db: Annotated[Prisma, Depends(get_db)],
+    file: Annotated[UploadFile, File()],
+    public_key: Annotated[str, Form(alias="publicKey")] = "",
+):
+    """Verifikasi publik memakai file bertanda + kunci publik tempelan (tanpa login).
+
+    Untuk demo "kunci salah" tanpa token dan tanpa sentuh DB: file sama +
+    kunci benar -> VALID; file sama + kunci lain -> INVALID.
+    """
+    from types import SimpleNamespace
+
+    public_key = (public_key or "").strip()
+    content = await file.read()
+    if not content or len(content) > MAX_PDF_BYTES or not content.startswith(PDF_MAGIC):
+        raise AppError("INVALID_PDF", "File harus PDF valid max 25 MB.", status=400)
+    if not public_key:
+        raise AppError("MISSING_FIELD", "publicKey wajib diisi.", status=400)
+    if len(public_key) > 8000 or "BEGIN PUBLIC KEY" not in public_key:
+        await log_action(db, "VERIFY", details={"method": "manual-file", "result": "INVALID"})
+        return _invalid("Kunci publik tidak valid (harus PEM public key).")
+    digest = sha256_hex(content)
+    sig = None
+    recent = await db.signature.find_many(order={"createdAt": "desc"}, take=50)
+    for cand in recent:
+        if not cand.signedPdfPath:
+            continue
+        try:
+            signed_bytes = download_file(cand.signedPdfPath)
+        except Exception:  # noqa: BLE001, S112 — file hilang = lewati kandidat ini
+            continue
+        if sha256_hex(signed_bytes) == digest:
+            sig = cand
+            break
+    if sig is None:
+        await log_action(db, "VERIFY", details={"method": "manual-file", "result": "INVALID"})
+        return _invalid("Tidak ada tanda tangan yang cocok (dokumen mungkin diubah).")
+    db_key = await db.keypair.find_unique(where={"id": sig.keyPairId})
+    if db_key is not None and db_key.revoked:
+        await log_action(
+            db,
+            "VERIFY",
+            entity="signature",
+            entity_id=sig.id,
+            details={"method": "manual-file", "result": "INVALID"},
+        )
+        return _invalid("Kunci penandatangan sudah di-revoke.")
+    key = SimpleNamespace(publicKey=public_key, revoked=False)
+    ok, reason = await _crypto_valid(db, sig, key=key)
+    await log_action(
+        db,
+        "VERIFY",
+        entity="signature",
+        entity_id=sig.id,
+        details={"method": "manual-file", "result": "VALID" if ok else "INVALID"},
     )
     if not ok:
         return _invalid(reason)

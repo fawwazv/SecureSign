@@ -413,6 +413,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/verify/manual-file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verifikasi publik memakai file bertanda + kunci tempelan tanpa login */
+        post: operations["verifyManualFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/audit-logs": {
         parameters: {
             query?: never;
@@ -1506,6 +1523,37 @@ export interface operations {
                 "multipart/form-data": {
                     /** Format: binary */
                     file: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Hasil verifikasi VALID / TIDAK VALID */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerifyResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    verifyManualFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** Format: binary */
+                    file: string;
+                    /** @description Public key PEM yang ditempel pengguna */
+                    publicKey: string;
                 };
             };
         };

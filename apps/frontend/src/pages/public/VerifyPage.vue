@@ -33,6 +33,35 @@
         </Button>
       </div>
 
+      <div v-else-if="mode === 'manual-file'" class="sv-card mt-4 p-6">
+        <p class="text-sm text-slate-600">
+          Unggah <strong>PDF bertanda</strong> dan tempel <strong>kunci publik</strong> (format PEM)
+          yang ingin diuji. Kunci benar → VALID; kunci lain → TIDAK VALID. Tanpa token.
+        </p>
+        <label for="mf-pdf" class="mt-3 block text-sm font-medium">File PDF bertanda (maks 25 MB)</label>
+        <input
+          id="mf-pdf" type="file" accept="application/pdf"
+          class="mt-2 block w-full rounded-md border border-light-blue bg-white p-2 text-sm"
+          @change="onManualFile"
+        />
+        <p v-if="manualFileName" class="mt-2 text-sm text-slate-600">Dipilih: {{ manualFileName }}</p>
+        <div class="mt-3 flex flex-col gap-1.5">
+          <label for="mf-key" class="text-sm font-medium text-slate-800">Kunci publik (PEM)</label>
+          <textarea
+            id="mf-key" v-model="manualKey" rows="5"
+            placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"
+            class="w-full rounded-md border border-light-blue bg-white px-3 py-2 font-mono text-xs focus:border-deep-blue focus:outline-none focus:ring-2 focus:ring-deep-blue/30"
+            @blur="manualTouched = true"
+          />
+          <p v-if="manualTouched && manualKey && !isManualKeyPem" role="alert" class="text-xs text-[#B3261E]">
+            Kunci publik harus format PEM (mengandung BEGIN PUBLIC KEY).
+          </p>
+        </div>
+        <Button class="mt-4" :loading="loading" :disabled="!canVerifyManualFile" @click="verifyManualFile">
+          Verifikasi file + kunci
+        </Button>
+      </div>
+
       <div v-else class="sv-card mt-4 p-6">
         <p class="text-sm text-slate-600">
           Arahkan kamera ke QR pada dokumen. Hasil pindaian otomatis diverifikasi.
@@ -99,12 +128,21 @@ import type { VerifyResult } from '@/types/api'
 const tabs = [
   { value: 'upload', label: 'Upload PDF' },
   { value: 'token', label: 'Token / QR' },
+  { value: 'manual-file', label: 'File + Kunci' },
   { value: 'scan', label: 'Scan QR' },
 ]
 const mode = ref('upload')
 const file = ref<File | null>(null)
 const token = ref('')
 const tokenTouched = ref(false)
+const manualFile = ref<File | null>(null)
+const manualKey = ref('')
+const manualTouched = ref(false)
+const isManualKeyPem = computed(() => manualKey.value.includes('BEGIN PUBLIC KEY'))
+const manualFileName = computed(() => manualFile.value?.name ?? '')
+const canVerifyManualFile = computed(
+  () => !!manualFile.value && isManualKeyPem.value && !loading.value,
+)
 const loading = ref(false)
 const error = ref('')
 const result = ref<VerifyResult | null>(null)
@@ -163,6 +201,33 @@ async function verifyToken() {
     result.value = await verifyService.verifyByToken(sigId)
   } catch (e) {
     error.value = toApiMessage(e, 'Token TIDAK VALID atau gagal diverifikasi.')
+    result.value = null
+  } finally {
+    loading.value = false
+  }
+}
+
+function onManualFile(e: Event) {
+  const f = (e.target as HTMLInputElement).files?.[0] ?? null
+  if (f && f.size > 25 * 1024 * 1024) {
+    error.value = 'Ukuran file melebihi 25 MB.'
+    manualFile.value = null
+    return
+  }
+  error.value = ''
+  result.value = null
+  manualFile.value = f
+}
+
+async function verifyManualFile() {
+  manualTouched.value = true
+  if (!canVerifyManualFile.value || !manualFile.value) return
+  loading.value = true
+  error.value = ''
+  try {
+    result.value = await verifyService.verifyManualFile(manualFile.value, manualKey.value.trim())
+  } catch (e) {
+    error.value = toApiMessage(e, 'Verifikasi file + kunci gagal.')
     result.value = null
   } finally {
     loading.value = false

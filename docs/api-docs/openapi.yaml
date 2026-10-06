@@ -670,6 +670,37 @@ paths:
                 $ref: '#/components/schemas/VerifyResult'
         '400':
           $ref: '#/components/responses/BadRequest'
+  /verify/manual-file:
+    post:
+      tags: [verify]
+      summary: Verifikasi publik memakai file bertanda + kunci tempelan tanpa login
+      operationId: verifyManualFile
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, publicKey]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                publicKey:
+                  type: string
+                  description: Public key PEM yang ditempel pengguna
+      responses:
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '200':
+          description: Hasil verifikasi VALID / TIDAK VALID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerifyResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
   /audit-logs:
     get:
       tags: [audit-logs]

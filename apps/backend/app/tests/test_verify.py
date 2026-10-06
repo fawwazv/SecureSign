@@ -209,6 +209,65 @@ def test_verify_fake_qr_invalid(client: TestClient, env: dict) -> None:
     assert res.json()["status"] == "INVALID"
 
 
+def test_verify_manual_file_kunci_benar_valid_salah_invalid(client: TestClient, env: dict) -> None:
+    """Demo uji kunci salah: file sama + kunci benar -> VALID; + kunci lain -> INVALID."""
+    sig_id, _, signed = _signed(client, env, "ManualFile1")
+
+    async def _pubkey() -> str:
+        db = Prisma()
+        await db.connect()
+        try:
+            sig = await db.signature.find_unique(where={"id": sig_id})
+            assert sig
+            key = await db.keypair.find_unique(where={"id": sig.keyPairId})
+            assert key
+            return key.publicKey
+        finally:
+            await db.disconnect()
+
+    pub = _db_run(_pubkey())
+
+    def _post(pdf: bytes, key: str, filename: str = "dok.pdf"):
+        return client.post(
+            "/api/v1/verify/manual-file",
+            files={"file": (filename, io.BytesIO(pdf), "application/pdf")},
+            data={"publicKey": key},
+        )
+
+    ok = _post(signed, pub)
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["status"] == "VALID"
+    assert ok.json()["signerName"] == "Verify Tester"
+
+    other = client.post(
+        "/api/v1/keys/generate",
+        json={"algorithm": "ED25519"},
+        headers={"Authorization": f"Bearer {env['t_signer']}"},
+    )
+    assert other.status_code == 201, other.text
+    bad = _post(signed, other.json()["publicKey"])
+    assert bad.status_code == 200, bad.text
+    assert bad.json()["status"] == "INVALID"
+
+    junk = _post(signed, "bukan-pem")
+    assert junk.status_code == 200
+    assert junk.json()["status"] == "INVALID"
+
+    no_key = client.post(
+        "/api/v1/verify/manual-file",
+        files={"file": ("dok.pdf", io.BytesIO(signed), "application/pdf")},
+    )
+    assert no_key.status_code in (400, 422), no_key.text
+
+    bukan_pdf = client.post(
+        "/api/v1/verify/manual-file",
+        files={"file": ("a.txt", io.BytesIO(b"bukan pdf"), "application/pdf")},
+        data={"publicKey": pub},
+    )
+    assert bukan_pdf.status_code == 400
+    assert bukan_pdf.json()["error"]["code"] == "INVALID_PDF"
+
+
 def test_verify_upload_signed_valid_original_invalid(client: TestClient, env: dict) -> None:
     """File bertanda -> VALID; file asli tanpa QR (hash sama) -> INVALID."""
     _, original, signed = _signed(client, env, "Upload1")

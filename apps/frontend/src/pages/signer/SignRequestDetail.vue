@@ -44,6 +44,15 @@
             </div>
             <p v-if="keyError" role="alert" class="text-xs text-[#B3261E]">{{ keyError }}</p>
           </div>
+          <div v-if="selectedKey" class="rounded-md border border-light-blue bg-white p-3">
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-xs font-semibold text-deep-blue">
+                Kunci publik ({{ selectedKey.algorithm }}) — aman dibagikan untuk verifikasi
+              </p>
+              <Button variant="ghost" size="sm" @click="copyKey">{{ copiedTick ? 'Tersalin!' : 'Salin' }}</Button>
+            </div>
+            <pre class="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-50 p-2 font-mono text-[10px] leading-relaxed text-slate-600">{{ selectedKey.publicKey }}</pre>
+          </div>
           <Input id="signer-position" v-model="position" label="Jabatan saat menandatangani (opsional)" placeholder="cth. Kaprodi" />
           <div class="flex flex-wrap gap-2">
             <Button variant="primary" :loading="acting" :disabled="!keyPairId.trim() || item.status !== 'PENDING'" @click="doApprove">
@@ -107,6 +116,8 @@ const keyPairId = ref('')
 const position = ref('')
 const keys = ref<KeyPairItem[]>([])
 const activeKeys = computed(() => keys.value.filter((k) => !k.revoked))
+const selectedKey = computed(() => keys.value.find((k) => k.id === keyPairId.value) ?? null)
+const copiedTick = ref(false)
 const newKeyAlgo = ref<'RSA_PSS_2048' | 'ECDSA_P256' | 'ED25519'>('ED25519')
 const creatingKey = ref(false)
 const keyError = ref('')
@@ -127,6 +138,30 @@ const acting = ref(false)
 
 function back() {
   router.push('/signer')
+}
+
+async function copyTextValue(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    ta.remove()
+  }
+}
+
+function flashTick(setter: (v: boolean) => void) {
+  setter(true)
+  setTimeout(() => { setter(false) }, 2000)
+}
+
+async function copyKey() {
+  if (!selectedKey.value) return
+  await copyTextValue(selectedKey.value.publicKey)
+  flashTick((v) => { copiedTick.value = v })
 }
 
 /** Unduh file final bertanda (ber-QR) — signer berhak via sign-request-nya. */
